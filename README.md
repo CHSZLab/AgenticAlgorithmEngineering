@@ -14,6 +14,10 @@ Algorithm Engineering, as defined by [Sanders (2009)](https://doi.org/10.1007/97
 
 Agentic Algorithm Engineering takes this methodology and hands the cycle to an autonomous AI agent. The agent formulates hypotheses, implements changes, runs experiments, and evaluates results, iterating continuously without human intervention. This allows systematic, high-throughput exploration of the optimization space while maintaining the scientific rigor of the AE methodology.
 
+## Author
+
+Christian Schulz, [Algorithm Engineering Group](https://ae.ifi.uni-heidelberg.de/), Heidelberg University
+
 ## Contributing
 
 We welcome contributions! Feel free to open a pull request if you have improvements, extensions, or new ideas.
