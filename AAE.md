@@ -49,8 +49,8 @@ The agent then runs an autonomous loop, applying the AE cycle to systematically 
 
 To set up a new tuning session, work with the user to:
 
-1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar21`). The branch `autotune/<tag>` must not already exist.
-2. **Create the branch**: `git checkout -b autotune/<tag>` from current main/master.
+1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar21`). The branch `aae/<tag>` must not already exist.
+2. **Create the branch**: `git checkout -b aae/<tag>` from current main/master.
 3. **Read the in-scope files**: Understand the full context:
    - The **target file(s)** the agent may modify.
    - The **benchmark harness** (read-only) that defines the metric and evaluation procedure.
@@ -171,7 +171,7 @@ Note: do not commit `results.tsv`; leave it untracked.
 
 ## The Experiment Loop
 
-The experiment runs on a dedicated branch (e.g. `autotune/mar21`).
+The experiment runs on a dedicated branch (e.g. `aae/mar21`).
 
 **The first run** is always the unmodified baseline.
 
