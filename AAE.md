@@ -123,11 +123,10 @@ Run the benchmark and collect results:
 - Extract the key metric(s) from the log.
 - If the run crashes, diagnose from the log tail.
 
-**Parallel runs**: When the benchmark must be run across multiple inputs, seeds, or configurations, use GNU `parallel` to execute them concurrently. For example:
+**Parallel runs**: Whenever the benchmark involves multiple inputs, seeds, or configurations, prefer GNU `parallel` to run them concurrently. This dramatically reduces wall-clock time per iteration and should be the default approach unless runs compete for shared resources (e.g. a single GPU). Example:
 ```bash
 parallel --jobs 4 --results run_results/ './bench.sh --input {} > logs/run_{}.log 2>&1' ::: input1 input2 input3 input4
 ```
-This reduces wall-clock time per iteration significantly. Only parallelize when runs are independent and the system has sufficient resources (CPU cores, memory, GPU slots) to avoid contention that would distort measurements.
 
 **Aggregation**: When an experiment produces multiple measurements (e.g. across inputs or seeds), use the **geometric mean** as the default summary statistic. The geometric mean is appropriate for ratios and multiplicative quantities like speedups or normalized scores, and is less sensitive to outliers than the arithmetic mean. Compute it as:
 ```
