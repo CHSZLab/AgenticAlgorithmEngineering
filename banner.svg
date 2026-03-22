@@ -18,13 +18,13 @@
     <textPath xlink:href="#tp0" href="#tp0" startOffset="50%" text-anchor="middle">Design</textPath>
   </text>
   <text font-family="sans-serif" font-size="16" font-weight="bold" fill="white" dy="5">
-    <textPath xlink:href="#tp1" href="#tp1" startOffset="50%" text-anchor="middle">Experiment</textPath>
+    <textPath xlink:href="#tp1" href="#tp1" startOffset="50%" text-anchor="middle">Analyze</textPath>
   </text>
   <text font-family="sans-serif" font-size="16" font-weight="bold" fill="white" dy="5">
     <textPath xlink:href="#tp2" href="#tp2" startOffset="50%" text-anchor="middle">Implement</textPath>
   </text>
   <text font-family="sans-serif" font-size="16" font-weight="bold" fill="white" dy="5">
-    <textPath xlink:href="#tp3" href="#tp3" startOffset="50%" text-anchor="middle">Analyze</textPath>
+    <textPath xlink:href="#tp3" href="#tp3" startOffset="50%" text-anchor="middle">Experiment</textPath>
   </text>
   <ellipse cx="1420" cy="200" rx="72" ry="45" fill="none" stroke="#4a5068" stroke-width="1.5" opacity="0.6"/>
   <text x="1420" y="188" font-family="sans-serif" font-size="14" fill="#a0a5b5" text-anchor="middle" font-weight="bold">falsifiable</text>
