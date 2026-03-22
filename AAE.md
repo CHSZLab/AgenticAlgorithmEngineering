@@ -127,6 +127,7 @@ Run the benchmark and collect results:
 ```bash
 parallel --jobs 4 --results run_results/ './bench.sh --input {} > logs/run_{}.log 2>&1' ::: input1 input2 input3 input4
 ```
+Only parallelize when runs are independent and the system has sufficient resources (CPU cores, memory, GPU slots) to avoid contention that would distort measurements.
 
 **Aggregation**: When an experiment produces multiple measurements (e.g. across inputs or seeds), use the **geometric mean** as the default summary statistic. The geometric mean is appropriate for ratios and multiplicative quantities like speedups or normalized scores, and is less sensitive to outliers than the arithmetic mean. Compute it as:
 ```
