@@ -240,15 +240,21 @@ The loop runs until the user manually interrupts.
 
 ## Knowledge Base
 
-This methodology is supported by a community-contributed knowledge base of optimization techniques, experiment results, and lessons learned from AAE sessions. Before or during a tuning session, consider consulting the knowledge base for techniques relevant to your problem:
+This methodology is supported by a community-contributed knowledge base of optimization techniques, experiment results, and lessons learned from AAE sessions. The knowledge base lives in the AAE repository at:
 
-1. Read `knowledge-base/INDEX.md` to scan titles, problem domains, and key techniques.
-2. Read individual entries that seem relevant to the current problem.
+https://github.com/CHSZLab/AgenticAlgorithmEngineering/tree/main/knowledge-base
+
+Before or during a tuning session, consult the knowledge base for techniques relevant to your problem:
+
+1. Fetch the index: `curl -sL https://raw.githubusercontent.com/CHSZLab/AgenticAlgorithmEngineering/main/knowledge-base/INDEX.md` and scan titles, problem domains, and key techniques.
+2. Fetch individual entries that seem relevant (same base URL, replace `INDEX.md` with the entry filename from the index).
 3. Use the insights to inform hypothesis generation in the AE cycle.
+
+If you have web search or web fetch tools available, use those instead of curl. If the knowledge base is available locally (e.g. as a git submodule or in the same repository), read the files directly.
 
 ### Contributing Back
 
-If your AAE run produces insights that could help others, ask the user whether you may submit a PR to the knowledge base. If the user agrees, fork the repository (if needed), create a new entry following the template in `knowledge-base/CONTRIBUTING.md`, update `INDEX.md`, and open a pull request via `gh` or the GitHub MCP server.
+If your AAE run produces insights that could help others, ask the user whether you may submit a PR to the knowledge base. If the user agrees, fork the AAE repository (if needed), create a new entry following the template in `knowledge-base/CONTRIBUTING.md`, update `INDEX.md`, and open a pull request via `gh` or the GitHub MCP server.
 
 Never create the PR without explicit user permission.
 
