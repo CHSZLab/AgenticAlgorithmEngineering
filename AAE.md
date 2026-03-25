@@ -223,6 +223,20 @@ The loop runs until the user manually interrupts.
 
 **Resource usage** is a soft constraint. Some increase is acceptable for meaningful metric gains, but it should not blow up dramatically.
 
+## Knowledge Base
+
+This methodology is supported by a community-contributed knowledge base of optimization techniques, experiment results, and lessons learned from AAE sessions. Before or during a tuning session, consider consulting the knowledge base for techniques relevant to your problem:
+
+1. Read `knowledge-base/INDEX.md` to scan titles, problem domains, and key techniques.
+2. Read individual entries that seem relevant to the current problem.
+3. Use the insights to inform hypothesis generation in the AE cycle.
+
+### Contributing Back
+
+If your AAE run produces insights that could help others, ask the user whether you may submit a PR to the knowledge base. If the user agrees, fork the repository (if needed), create a new entry following the template in `knowledge-base/CONTRIBUTING.md`, update `INDEX.md`, and open a pull request via `gh` or the GitHub MCP server.
+
+Never create the PR without explicit user permission.
+
 ## Philosophical Foundation
 
 This methodology mirrors Popper's scientific method as applied to algorithm engineering (Sanders, 2009):
