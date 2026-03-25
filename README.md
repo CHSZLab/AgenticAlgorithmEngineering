@@ -14,6 +14,14 @@ Algorithm Engineering, as defined by [Sanders (2009)](https://doi.org/10.1007/97
 
 Agentic Algorithm Engineering takes this methodology and hands the cycle to an autonomous AI agent. The agent formulates hypotheses, implements changes, runs experiments, and evaluates results, iterating continuously without human intervention. This allows systematic, high-throughput exploration of the optimization space while maintaining the scientific rigor of the AE methodology.
 
+## Knowledge Base
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CHSZLab/AgenticAlgorithmEngineering/main/img/knowledge-base-banner.svg" alt="Knowledge Base" width="900"/>
+</p>
+
+The project includes a community-contributed [knowledge base](knowledge-base/) of optimization techniques, experiment results, and lessons learned from AAE sessions. Browse `knowledge-base/INDEX.md` for an overview, or contribute your own findings (see `knowledge-base/CONTRIBUTING.md`).
+
 ## Usage
 
 The agent must run in a mode that does not require user input, since the AE cycle is designed to run autonomously and indefinitely. If you are using Claude Code, launch it with `--dangerously-skip-permissions` (byPassPermissions mode). For other agent frameworks, ensure that all tool calls (file edits, shell commands, git operations) are auto-approved so the loop can proceed without interruption.
@@ -54,10 +62,6 @@ In practice, even with `--dangerously-skip-permissions`, the agent may eventuall
 3. The manager uses tmux split panes (or in-process mode with `Shift+Down`) to monitor the executor and send follow-up messages when needed.
 
 This orchestration ensures the AE cycle runs truly unattended, even across context window boundaries or when the executor would otherwise break out of the loop.
-
-## Knowledge Base
-
-The project includes a community-contributed [knowledge base](knowledge-base/) of optimization techniques, experiment results, and lessons learned from AAE sessions. Browse `knowledge-base/INDEX.md` for an overview, or contribute your own findings (see `knowledge-base/CONTRIBUTING.md`).
 
 ## Author
 
