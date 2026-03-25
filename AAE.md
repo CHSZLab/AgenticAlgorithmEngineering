@@ -56,9 +56,10 @@ To set up a new tuning session, work with the user to:
    - The **benchmark harness** (read-only) that defines the metric and evaluation procedure.
    - Any **configuration or constants** that are fixed.
 4. **Identify constraints**: Understand what the agent can and cannot change (see below).
-5. **Verify benchmark works**: Run the benchmark once to confirm it produces output.
-6. **Initialize results.tsv**: Create `results.tsv` with just the header row.
-7. **Confirm and go**: Confirm setup looks good with the user, then begin.
+5. **Collect assertions**: Ask the user for any correctness invariants that must hold after every change (see below).
+6. **Verify benchmark works**: Run the benchmark once to confirm it produces output.
+7. **Initialize results.tsv**: Create `results.tsv` with just the header row.
+8. **Confirm and go**: Confirm setup looks good with the user, then begin.
 
 ## Constraints
 
@@ -66,12 +67,26 @@ The user defines these per project. The agent must respect them strictly.
 
 **What the agent CAN do:**
 - Modify the designated target file(s). Everything within them is fair game: algorithms, data structures, parameters, control flow, memory layout, parallelism, etc.
+- Replace entire subcomponents (e.g. swap one algorithm for a fundamentally different one, replace a data structure with an alternative, rewrite a module from scratch) if the agent has reason to believe this will improve the target metric. Optimizations are not limited to incremental tuning; architectural changes and algorithmic replacements are encouraged when the analysis supports them.
 
 **What the agent CANNOT do:**
 - Modify the benchmark harness or evaluation code.
 - Install new packages or add dependencies beyond what is already available.
 - Modify the metric definition or measurement methodology.
 - Change the time budget or input data.
+
+## Assertions
+
+The user may define correctness assertions: invariants that must hold after every change the agent makes. These act as a safety net, ensuring that optimizations do not silently break the program's correctness.
+
+Examples of assertions:
+- "The output must be a valid partition (every node assigned to exactly one block, no block empty)."
+- "The sorted output must be a permutation of the input."
+- "The loss must be finite and non-negative after every training step."
+
+During setup, ask the user for any assertions they want enforced. If provided, verify them after every implementation, before running the full benchmark. If an assertion fails, the change is incorrect; discard it immediately (no need to benchmark) and log it as a crash.
+
+Assertions are distinct from the benchmark metric. The metric measures performance; assertions guard correctness. A change that improves the metric but violates an assertion is always discarded.
 
 ## The AE Cycle in Practice
 
