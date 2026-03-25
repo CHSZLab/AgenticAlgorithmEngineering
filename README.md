@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/CHSZLab/AgenticAlgorithmEngineering/main/banner.svg" alt="Agentic Algorithm Engineering" width="900"/>
+  <img src="https://raw.githubusercontent.com/CHSZLab/AgenticAlgorithmEngineering/main/img/banner.svg" alt="Agentic Algorithm Engineering" width="900"/>
 </p>
 
 # Agentic Algorithm Engineering 
