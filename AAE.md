@@ -56,7 +56,7 @@ To set up a new tuning session, work with the user to:
    - The **benchmark harness** (read-only) that defines the metric and evaluation procedure.
    - Any **configuration or constants** that are fixed.
 4. **Identify constraints**: Understand what the agent can and cannot change (see below).
-5. **Collect assertions**: Ask the user for any correctness invariants that must hold after every change (see below).
+5. **Formulate assertions**: After reading the code, derive correctness invariants and present them to the user for confirmation (see below).
 6. **Verify benchmark works**: Run the benchmark once to confirm it produces output.
 7. **Initialize results.tsv**: Create `results.tsv` with just the header row.
 8. **Confirm and go**: Confirm setup looks good with the user, then begin.
@@ -77,14 +77,14 @@ The user defines these per project. The agent must respect them strictly.
 
 ## Assertions
 
-The user may define correctness assertions: invariants that must hold after every change the agent makes. These act as a safety net, ensuring that optimizations do not silently break the program's correctness.
+After reading the target code and benchmark during setup, the agent must formulate correctness assertions: invariants that must hold after every change. These act as a safety net, ensuring that optimizations do not silently break the program's correctness.
 
-Examples of assertions:
+The agent derives these from its understanding of the code. Examples:
 - "The output must be a valid partition (every node assigned to exactly one block, no block empty)."
 - "The sorted output must be a permutation of the input."
 - "The loss must be finite and non-negative after every training step."
 
-During setup, ask the user for any assertions they want enforced. If provided, verify them after every implementation, before running the full benchmark. If an assertion fails, the change is incorrect; discard it immediately (no need to benchmark) and log it as a crash.
+Present the assertions to the user for confirmation during setup. The user may add, modify, or remove assertions. Once agreed upon, verify them after every implementation, before running the full benchmark. If an assertion fails, the change is incorrect; discard it immediately (no need to benchmark) and log it as a crash.
 
 Assertions are distinct from the benchmark metric. The metric measures performance; assertions guard correctness. A change that improves the metric but violates an assertion is always discarded.
 
