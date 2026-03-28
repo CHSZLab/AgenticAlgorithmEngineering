@@ -37,3 +37,4 @@ Optimization techniques, experiment results, and lessons learned from AAE sessio
 | 031 | deque vs list for queue operations | BFS, FIFO queues | collections.deque for O(1) popleft vs list O(N) | [031-deque-vs-list-queue-ops.md](031-deque-vs-list-queue-ops.md) |
 | 032 | array module for typed numerical data | Compact storage, binary I/O | array.array for 72% memory reduction vs list | [032-array-module-typed-data.md](032-array-module-typed-data.md) |
 | 033 | Cython for C-speed hot loops | Custom metrics, graph traversal | Typed Cython with memoryviews for 95x speedup | [033-cython-c-speed-hot-loops.md](033-cython-c-speed-hot-loops.md) |
+| 034 | Optimizing label propagation in graph clustering | Multilevel graph clustering, LP refinement | Dense vectors, counting-sort contraction, sweep specialization, allocation elimination | [034-graph-clustering-lp-refinement.md](034-graph-clustering-lp-refinement.md) |
