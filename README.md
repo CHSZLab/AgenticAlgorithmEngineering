@@ -63,6 +63,16 @@ In practice, even with `--dangerously-skip-permissions`, the agent may eventuall
 
 This orchestration ensures the AE cycle runs truly unattended, even across context window boundaries or when the executor would otherwise break out of the loop.
 
+### Keeping the Loop Alive with `/loop`
+
+A simpler alternative to agent teams is Claude Code's built-in `/loop` command. It re-sends a prompt at a fixed interval, nudging the agent to continue if it has stalled:
+
+```
+/loop 30m continue the AAE loop
+```
+
+This sends "continue the AAE loop" every 30 minutes. If the agent is still running, the message is queued; if it has stopped or is waiting for input, it restarts the cycle. Combined with `--dangerously-skip-permissions`, this provides a lightweight safeguard against the agent silently exiting the AE loop.
+
 ## Author
 
 Christian Schulz, [Algorithm Engineering Group](https://ae.ifi.uni-heidelberg.de/), Heidelberg University
