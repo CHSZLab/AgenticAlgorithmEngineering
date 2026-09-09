@@ -8,6 +8,8 @@ This repository contains the program definition for **Agentic Algorithm Engineer
 
 See [AAE.md](AAE.md) for the full program definition.
 
+The methodology is described in the paper [Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts](https://arxiv.org/abs/2609.07204), which applies AAE to the shared-memory exact minimum cut solver [VieCut](https://github.com/VieCut/VieCut). See [Citation](#citation) below if you use AAE in your work.
+
 ## Algorithm Engineering
 
 Algorithm Engineering, as defined by [Sanders (2009)](https://doi.org/10.1007/978-3-642-03456-5_22), is a methodology for algorithmic research built around a cycle of design, analysis, implementation, and experimental evaluation. Unlike traditional algorithmics, which often stops at theoretical analysis, algorithm engineering insists on closing the loop: hypotheses about algorithm performance are tested experimentally on realistic inputs, and the results feed back into improved designs. Central to this process are falsifiable hypotheses, following Popper's scientific method applied to algorithms.
@@ -72,6 +74,24 @@ A simpler alternative to agent teams is Claude Code's built-in `/loop` command. 
 ```
 
 This sends "continue the AAE loop" every 30 minutes. If the agent is still running, the message is queued; if it has stopped or is waiting for input, it restarts the cycle. Combined with `--dangerously-skip-permissions`, this provides a lightweight safeguard against the agent silently exiting the AE loop.
+
+## Citation
+
+If you use Agentic Algorithm Engineering in your research, please cite the following paper:
+
+> David A. Bader, Adil Chhabra, Ernestine Großmann, Monika Henzinger, Alexander Noe, and Christian Schulz. *Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts*. arXiv:2609.07204, 2026. https://arxiv.org/abs/2609.07204
+
+```bibtex
+@misc{bader2026agenticalgorithmengineering,
+  title         = {Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts},
+  author        = {David A. Bader and Adil Chhabra and Ernestine Gro{\ss}mann and Monika Henzinger and Alexander Noe and Christian Schulz},
+  year          = {2026},
+  eprint        = {2609.07204},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  url           = {https://arxiv.org/abs/2609.07204}
+}
+```
 
 ## Author
 
