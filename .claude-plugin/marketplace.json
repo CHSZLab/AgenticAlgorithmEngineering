@@ -1,0 +1,11 @@
+{
+  "name": "aae",
+  "owner": { "name": "CHSZLab" },
+  "plugins": [
+    {
+      "name": "aae",
+      "source": "./",
+      "description": "Agentic Algorithm Engineering: autonomous performance tuning through falsifiable hypotheses, benchmarks, numbered patches, and a PDF report."
+    }
+  ]
+}

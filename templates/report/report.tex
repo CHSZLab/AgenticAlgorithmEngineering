@@ -1,0 +1,100 @@
+% AAE experiment report. Static skeleton; build_report.py writes generated/*.tex next to it.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{libertinus}
+\usepackage[libertinus]{newtxmath}
+\usepackage[a4paper,margin=2.2cm,top=2.3cm,bottom=2.4cm]{geometry}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{booktabs,tabularx,array}
+\usepackage{xcolor}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{listings}
+\usepackage[hidelinks]{hyperref}
+
+\emergencystretch=1.5em
+\setlist{itemsep=2pt,topsep=3pt,parsep=0pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+
+% colours
+\definecolor{ink}{HTML}{1F2937}
+\definecolor{accent}{HTML}{1D4ED8}
+\definecolor{safe}{HTML}{047857}
+\definecolor{unsafe}{HTML}{B91C1C}
+\definecolor{neutral}{HTML}{6B7280}
+\definecolor{soft}{HTML}{F3F4F6}
+
+\input{generated/session.tex}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.3pt}
+\fancyhead[L]{\small\color{ink!70}\ReportTitle}
+\fancyhead[R]{\small\color{ink!70}\nouppercase{\leftmark}}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\sectionmark}[1]{\markboth{#1}{}}
+
+\makeatletter
+\renewcommand\section{\@startsection{section}{1}{0pt}{-1ex}{1.2ex}{\Large\bfseries\color{accent}}}
+\renewcommand\subsection{\@startsection{subsection}{2}{0pt}{-1ex}{0.6ex}{\large\bfseries\color{ink}}}
+\makeatother
+
+% status badges
+\newcommand{\badge}[2]{\tcbox[on line,colback=#1!10,colframe=#1!70,boxrule=0.4pt,arc=2pt,left=3pt,right=3pt,top=1pt,bottom=1pt]{\scriptsize\bfseries\color{#1!80!black}#2}}
+\newcommand{\keep}{\badge{safe}{KEEP}}
+\newcommand{\discard}{\badge{neutral}{DISCARD}}
+\newcommand{\crash}{\badge{unsafe}{CRASH}}
+\newcommand{\baseline}{\badge{accent}{BASELINE}}
+
+% boxes
+\newtcolorbox{hypbox}{enhanced,colback=soft,colframe=ink!25,boxrule=0.4pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt}
+\newtcolorbox{verdictbox}[1]{enhanced,colback=#1!4,colframe=#1!60,boxrule=0.5pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt}
+\newtcolorbox{summarybox}{enhanced,colback=soft,colframe=ink!30,boxrule=0.5pt,arc=2pt,left=8pt,right=8pt}
+
+% diffs
+\lstdefinelanguage{diff}{
+  morecomment=[f][\color{safe!85!black}]{+},
+  morecomment=[f][\color{unsafe}]{-},
+  morecomment=[f][\color{accent}]{@@},
+}
+\lstset{language=diff,basicstyle=\ttfamily\scriptsize,columns=fixed,
+  breaklines=true,breakatwhitespace=false,postbreak=\mbox{\textcolor{neutral}{$\hookrightarrow$}\space},
+  tabsize=4,showstringspaces=false,keepspaces=true,
+  frame=single,rulecolor=\color{ink!20},backgroundcolor=\color{soft!60},
+  xleftmargin=3pt,xrightmargin=3pt,framexleftmargin=3pt,framexrightmargin=3pt}
+
+\hypersetup{pdftitle={\ReportTitle},pdfauthor={}}
+
+\begin{document}
+
+%======================================================================
+\thispagestyle{empty}
+\begin{center}
+{\color{accent}\rule{\linewidth}{1.2pt}}\par\vspace{6pt}
+{\LARGE\bfseries \ReportTitle}\par\vspace{5pt}
+{\large \ReportSubtitle}\par\vspace{4pt}
+{\color{accent}\rule{\linewidth}{1.2pt}}
+\end{center}
+
+\input{generated/summary.tex}
+
+%======================================================================
+\clearpage
+\section{Trajectory}\label{sec:trajectory}
+\input{generated/trajectory.tex}
+
+%======================================================================
+\clearpage
+\section{Accepted changes}\label{sec:accepted}
+\input{generated/accepted.tex}
+
+%======================================================================
+\input{generated/experiments.tex}
+
+\end{document}

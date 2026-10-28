@@ -6,7 +6,7 @@
 
 This repository contains the program definition for **Agentic Algorithm Engineering (AAE)**, a methodology that turns autonomous agents into performance engineers following the Algorithm Engineering cycle: design, analysis, implementation, and experimental evaluation, driven by falsifiable hypotheses.
 
-See [AAE.md](AAE.md) for the full program definition.
+See [AAE.md](AAE.md) for the full program definition. Besides the optimized code, every AAE session produces two artifacts: one numbered patch per accepted change in `patches/`, and a PDF report in `report/` with the trajectory of the metric and one page per tested hypothesis (intuition, prediction, code change, measurements, verdict).
 
 The methodology is described in the paper [Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts](https://arxiv.org/abs/2609.07204), which applies AAE to the shared-memory exact minimum cut solver [VieCut](https://github.com/VieCut/VieCut). See [Citation](#citation) below if you use AAE in your work.
 
@@ -23,6 +23,35 @@ Agentic Algorithm Engineering takes this methodology and hands the cycle to an a
 </p>
 
 The project includes a community-contributed [knowledge base](knowledge-base/) of optimization techniques, experiment results, and lessons learned from AAE sessions. Browse `knowledge-base/INDEX.md` for an overview, or contribute your own findings (see `knowledge-base/CONTRIBUTING.md`).
+
+## Installation
+
+Inside Claude Code, type:
+
+```
+/plugin install aae --marketplace CHSZLab/AgenticAlgorithmEngineering
+```
+
+Then type `/aae:aae` (or just ask Claude Code to optimize something with AAE) and say what to optimize, e.g. `/aae:aae make the solver in src/ faster on the graphs in data/`.
+
+On Claude Code versions before 2.1.275, add the marketplace first: `/plugin marketplace add CHSZLab/AgenticAlgorithmEngineering`, then `/plugin install aae@aae`.
+
+Without the plugin system, a plain clone works too (the skill is then called `/aae`):
+
+```bash
+git clone https://github.com/CHSZLab/AgenticAlgorithmEngineering ~/.claude/skills/aae
+```
+
+Using another agent? Just tell it to follow [AAE.md](AAE.md).
+
+<details>
+<summary>Details: updating, per-project install, report requirements</summary>
+
+- Update: `/plugin update aae` (plugin) or `git -C ~/.claude/skills/aae pull` (clone).
+- Install for one project only: clone into `.claude/skills/aae` inside that project instead.
+- The PDF report needs Python 3 and LaTeX (TeX Live with `latexmk`). Without LaTeX, the session still runs and keeps the patches; only the PDF is skipped.
+
+</details>
 
 ## Usage
 
