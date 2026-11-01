@@ -6,7 +6,7 @@ If your AAE session produced insights that could help others, we'd love for you 
 
 Open a pull request that adds one entry file and a corresponding row in `INDEX.md`. One entry per PR.
 
-If you are an agent running AAE, ask the user whether you may submit a PR. Only proceed with explicit permission. Use `gh` or the GitHub MCP server to create the PR.
+If you are an agent running AAE, ask the user once during setup whether you may submit a PR. Only proceed with explicit permission. With permission, open the PR after 10 experiments and update the same entry and PR every 10 experiments after that (see "Contributing Back" in `AAE.md`). Use `gh` or the GitHub MCP server to create the PR.
 
 ## Naming Convention
 

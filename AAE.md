@@ -86,7 +86,8 @@ To set up a new tuning session, work with the user to:
 5. **Formulate assertions**: After reading the code, derive correctness invariants and present them to the user for confirmation (see below).
 6. **Verify benchmark works**: Run the benchmark once to confirm it produces output.
 7. **Initialize results.tsv, patches, and report**: Create `results.tsv` with just the header row, an empty `patches/` folder (see [Patches](#patches)), and a `report/` folder with the report template, an `experiments/` subfolder, and `session.json` (see [Experiment Report](#experiment-report)). Add `results.tsv`, `patches/`, and `report/` to `.git/info/exclude`.
-8. **Confirm and go**: Confirm setup looks good with the user, then begin.
+8. **Ask about knowledge-base contributions**: Ask the user once, explicitly, whether you may share the session's learnings with the [Knowledge Base](#knowledge-base) by opening a pull request to the AAE repository and updating it every 10 experiments (see [Contributing Back](#contributing-back)). Wait for a clear yes or no; no answer counts as no. Record the answer as `"kb_contributions": true` or `false` in `report/session.json`, so it survives context compaction and restarts. This is the only time you ask; do not ask again during the loop.
+9. **Confirm and go**: Confirm setup looks good with the user, then begin.
 
 ## Constraints
 
@@ -261,7 +262,7 @@ done
  "date": "<YYYY-MM-DD>", "summary": "<short narrative of the trajectory; update it from time to time>"}
 ```
 
-`direction` is `lower` or `higher` (which way the metric improves).
+`direction` is `lower` or `higher` (which way the metric improves). Add `"kb_contributions": true` or `false` once the user has answered the contribution question in setup step 8; after the first contribution, also record `"kb_entry"` (the entry filename) and `"kb_pr"` (the PR URL).
 
 **Per experiment.** Experiments are numbered `001`, `002`, ... in the order they are run; the baseline is `001`. Each experiment gets a folder `report/experiments/NNN/` with two files:
 
@@ -312,7 +313,8 @@ LOOP FOREVER (DO NOT STOP EVER):
 9. **Log**: Record the result in `results.tsv`.
 10. **Reflect**: What did this result tell you? Update your model. Did it confirm, refute, or refine your hypothesis? Use induction from accumulated results to generate the next hypothesis.
 11. **Report** (mandatory, every experiment): Complete `report/experiments/NNN/meta.json` with status, measurements, verdict, and reflection, then rebuild the report with `python3 report/build_report.py report`.
-12. **Go to 1**.
+12. **Contribute** (every 10 experiments): If `kb_contributions` is `true` in `report/session.json` and the experiment number is a multiple of 10 (`010`, `020`, ...), open or update the session's knowledge-base PR (see [Contributing Back](#contributing-back)). Do not ask the user; permission was given in setup. If it is `false` or missing, skip this step.
+13. **Go to 1**.
 
 ## Operational Rules
 
@@ -351,9 +353,15 @@ If you have web search or web fetch tools available, use those instead of curl. 
 
 ### Contributing Back
 
-If your AAE run produces insights that could help others, ask the user whether you may submit a PR to the knowledge base. If the user agrees, fork the AAE repository (if needed), create a new entry following the template in `knowledge-base/CONTRIBUTING.md`, update `INDEX.md`, and open a pull request via `gh` or the GitHub MCP server.
+Permission is asked once, during [Setup](#setup) (step 8), and stored as `kb_contributions` in `report/session.json`. Never open or update a PR unless it is `true`.
 
-Never create the PR without explicit user permission.
+If permission was given, contribute every 10 experiments (loop step 12). Each session has **one** entry and **one** PR, which grows over the session:
+
+1. **First contribution** (experiment 010): fork the AAE repository with `gh repo fork` if you cannot push to it, and create a branch `kb/<NNN>-<short-slug>` from the latest `main`, where `<NNN>` is the next free number in `INDEX.md`. Write the entry following the template in `knowledge-base/CONTRIBUTING.md`, add its row to `INDEX.md`, commit, push, and open the PR with `gh pr create` (or the GitHub MCP server). Record `kb_entry` and `kb_pr` in `report/session.json`.
+2. **Later contributions** (experiments 020, 030, ...): update the same entry with what the last 10 experiments taught (new techniques that worked, dead ends worth recording, updated baseline vs. best numbers), commit, and push to the same branch. The open PR updates automatically. If the PR was merged or closed in the meantime, start a new branch and PR that updates the existing entry, and record the new `kb_pr`.
+3. **Nothing new**: if the last 10 experiments produced no transferable insight, skip the contribution and note that in the report summary instead of pushing an empty update.
+
+Do this work in a separate clone of the AAE repository (for example in `/tmp`), never on the `aae/<tag>` branch of the project under optimization. Only share transferable insights, and never include proprietary code, data, or paths from the user's project beyond what the entry needs. Do not wait for review or merge, and never let a failing `gh` call stop the loop: note the failure in the report summary and retry at the next multiple of 10.
 
 ## Philosophical Foundation
 
