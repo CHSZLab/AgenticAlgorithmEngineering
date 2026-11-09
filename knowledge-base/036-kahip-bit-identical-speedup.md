@@ -30,7 +30,16 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    smaller reservation, or the profile shows a malloc cost that does not exist.
 5. **Build the flow graph as CSR** in one pass, and map nodes to flow nodes with a hash map instead of O(n) vectors per call
    (flow refinement -7 to -8%, lower peak memory).
-6. **Per-phase timers printed by the binary** (exclusive scopes: coarsening, initial partitioning, refinement, plus detail
+6. **Remove per-call O(n) setup.** Flow refinement allocated and filled an O(n) BFS depth array per call; reusing one array
+   and resetting only the reached entries cut flow time by 8%. Sorting (rating, edge) pairs instead of edge ids with an
+   indirect rating comparator gives the same permutation (std::sort only depends on comparison outcomes) and cut matching by
+   3 to 5%.
+7. **Use a time-based sampler, not only callgrind.** perf was unavailable (perf_event_paranoid 4), so a 40-line
+   LD_PRELOAD library (ITIMER_PROF at 1 kHz, `backtrace()` in the handler, addr2line with `-i` for inline frames) gave real
+   time per source line and per caller. It showed different hot spots than callgrind (for example, a scan over hub
+   adjacencies at 23% of one web-graph job). Start the sampler after `taskset`, not before it: the interval timer survives
+   `exec` but the handler does not, so SIGPROF kills the child.
+8. **Per-phase timers printed by the binary** (exclusive scopes: coarsening, initial partitioning, refinement, plus detail
    scopes such as flow and multitry) make it possible to judge each hypothesis by the component it targets, when several are
    measured in one full run.
 
@@ -46,6 +55,13 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 008 | pointer cache in front of the block-pair map | 0.8076 | discard (below 1% floor) |
 | 009 | exact replica of `unordered_map` iteration order | A/B 0.3-1.5% slower | discard |
 | 010 | incremental neighbor degrees in 2-way FM | **0.7489** (total 0.7868) | keep |
+| 012 | reuse BFS depth array in flow refinement | 0.7322 (with 013) | keep |
+| 013 | sort (rating, edge) pairs in GPA matching | **0.7322** (total 0.7659) | keep |
+| 014 | reuse multitry start-node gains, replay tie draws | A/B 0.995 | discard |
+| 015/019 | skip repeated no-op boundary updates of the moved node | 0.7309 (with 018) | discard (below floor) |
+| 016 | k-way gain loop over raw arrays | A/B 1.007 (slower) | discard |
+| 017 | witness hint for the "still adjacent to old block" scan | 0.7331 (with 018) | discard (+1-3% elsewhere) |
+| 018 | residual graph reverse-edge lookup via smaller adjacency | 0.7309 (with 019) | discard (web graphs only) |
 
 Every kept step: 0 incorrect of 537 jobs, crosscheck OK on 864 runs.
 
@@ -59,6 +75,13 @@ Every kept step: 0 incorrect of 537 jobs, crosscheck OK on 864 runs.
   library's own `std::__detail::_Prime_rehash_policy`, erase bucket fix-ups, `clear()` keeping the bucket count). It is exact
   (partitions identical), so this is a usable trick when an iterated map must be replaced, but here it was slower than the
   real map once allocation was cheap.
+- **Fixes for one graph family inside the hottest function.** A hint that removed hub scans gave -10% on a web graph, but
+  d_multitry rose 1 to 3% on 17 of 20 graphs where the new branch was never taken (code size and layout in the k-way move
+  path). Four variants of the same idea all showed it; stop after two A/B rounds.
+- **Below about 2%, component timers are noise.** Phase timers of untouched components moved by +-2% between runs, so a
+  component gain must be clearly larger than that, and the overall metric must still clear the floor.
+- **Rewriting a latency-bound loop.** The k-way gain loop over raw arrays was 0.7% slower: the compiler already hoisted the
+  loads, and the time is in dependent partition loads and unpredictable tie branches.
 - **Micro-optimising the label-propagation inner loop** (raw pointers, hoisted flags): only about 3%. The loop is bound by
   random memory access, not by instructions.
 
