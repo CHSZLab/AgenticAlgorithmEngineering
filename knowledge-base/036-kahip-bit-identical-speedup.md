@@ -42,6 +42,18 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 8. **Per-phase timers printed by the binary** (exclusive scopes: coarsening, initial partitioning, refinement, plus detail
    scopes such as flow and multitry) make it possible to judge each hypothesis by the component it targets, when several are
    measured in one full run.
+9. **Software prefetch for whole-graph sweeps in random order.** Label propagation visits all nodes in a random
+   permutation, so every node, its edge list and its neighbors' cluster ids are cache misses. Prefetching the node entry three
+   nodes ahead, its edges two ahead and the neighbors' cluster ids (at most 32) one ahead cut coarsening by 14%. The same
+   prefetch in the k-way move loop was 2% slower: those neighborhoods are already cache resident.
+10. **Small containers in the max-flow solver.** `std::vector<bool>` flags became `char`, and edges are reached through one
+   pointer per node; push-relabel time fell by 8% with the same capacity casts (a `NodeID` accessor truncated a 64-bit
+   capacity, and the cast had to be kept for identical flows).
+11. **Check every hash map for lookup-only use, including first-occurrence numbering.** The ensemble of clusterings
+   numbered each distinct (cluster a, cluster b) pair at its first occurrence via an `unordered_map`; a stable bucket sort by
+   the first id plus a stamp array over the second gives the same numbers without hashing (coarsening of the strong social
+   configuration -16%, one job -20%). A distribution's output can also be replaced by its closed form when the library's
+   algorithm is known: libstdc++'s `uniform_int_distribution(0,1)` on `mt19937` returns the top bit of one draw.
 
 ## Experiment Data
 
@@ -62,6 +74,16 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 016 | k-way gain loop over raw arrays | A/B 1.007 (slower) | discard |
 | 017 | witness hint for the "still adjacent to old block" scan | 0.7331 (with 018) | discard (+1-3% elsewhere) |
 | 018 | residual graph reverse-edge lookup via smaller adjacency | 0.7309 (with 019) | discard (web graphs only) |
+| 020 | prefetch in the label-propagation sweep | 0.7079 (total 0.7463) | keep |
+| 021 | prefetch in the k-way move loop | A/B 1.019 (slower) | discard |
+| 022 | push-relabel char flags, one edge pointer per node | **0.6986** (total 0.7317) | keep |
+| 023 | push-relabel queues as arrays | A/B 0.998 | discard |
+| 024 | `noexcept` hash functors (no cached hash codes) | A/B 0.994 | discard |
+| 025 | `nextBool` as the top bit of one `mt19937` draw | 0.6924 (with 026, 027) | keep |
+| 026 | ensemble numbering without a hash map | **0.6925** (total 0.7172, confirmed by the 030 run) | keep |
+| 027 | SCC with vector stacks in most-balanced min cut | flow time 1.005 | discard |
+| 028 | degree node ordering via packed keys | coarsening 0.992 | discard (below floor) |
+| 030 | open-addressing index in the bucket queue | multitry 1.007 | discard (A/B gain not reproduced) |
 
 Every kept step: 0 incorrect of 537 jobs, crosscheck OK on 864 runs.
 
@@ -84,6 +106,11 @@ Every kept step: 0 incorrect of 537 jobs, crosscheck OK on 864 runs.
   loads, and the time is in dependent partition loads and unpredictable tie branches.
 - **Micro-optimising the label-propagation inner loop** (raw pointers, hoisted flags): only about 3%. The loop is bound by
   random memory access, not by instructions.
+- **Removing the cached hash code** (`noexcept` hash functors) keeps the order but gained only 0.6%; the cost of the iterated
+  maps is the chain walk and the modulo, not the node size.
+- **Trusting a 7-job A/B for small gains.** An open-addressing index in the FM bucket queue showed 0.967 on one job in
+  the A/B and 1.017 on the same job in the full run; gains under about 3% in the A/B need the full run before they count.
+- **Array-based queues in push-relabel** (instead of `std::queue`) were neutral: the queues are not where the time goes.
 
 ## Environment
 
