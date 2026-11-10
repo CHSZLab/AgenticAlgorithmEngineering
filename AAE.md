@@ -1,6 +1,6 @@
 ---
 name: aae
-description: Use when asked to autonomously optimize, tune, or speed up a program (running time, throughput, quality, memory) with the Agentic Algorithm Engineering cycle of falsifiable hypotheses, benchmarks, and keep/discard decisions, or when the user runs /aae.
+description: Use when asked to autonomously optimize, tune, or speed up a program (running time, throughput, quality, memory) with the Agentic Algorithm Engineering cycle of falsifiable hypotheses, benchmarks, and keep/discard decisions, or when the user invokes $aae in Codex or /aae in Claude Code.
 ---
 
 # Autonomous Performance Tuning via the Algorithm Engineering Cycle
@@ -42,7 +42,7 @@ This program turns an autonomous agent into a performance engineer that follows 
 
 ## Session Start
 
-When a session starts (for example when this program is invoked as a skill), first show the user the Algorithm Engineering cycle with AAE at its center, exactly as below and inside a code block, followed by one line naming the target program and metric if they are already known. Then continue with [Setup](#setup).
+When a session starts (for example when this program is invoked as a skill), first show the user the Algorithm Engineering cycle with AAE at its center, exactly as below and inside a code block, followed by one line naming the target program and metric if they are already known. Before continuing with [Setup](#setup), offer the user **multi-component AAE**: instrument the target code so one benchmark run can test multiple hypotheses (one per component), then use the per-component profile against an instrumented baseline to keep or discard each change independently. If selected, keep component changes independently revertible and record a separate hypothesis, measurement, and verdict for each; keep the benchmark harness unchanged. If component interactions or profiling overhead prevent reliable attribution, test those hypotheses separately and validate the retained combination against the overall metric and correctness assertions.
 
 ```
                     ╭──────────────────╮
@@ -71,6 +71,17 @@ The agent receives:
 - A **time budget** per experiment.
 
 The agent then runs an autonomous loop, applying the AE cycle to systematically improve performance. Each iteration produces a falsifiable hypothesis ("changing X will improve metric Y by roughly Z"), implements it, runs the experiment, and either keeps or discards the change based on the result.
+
+## Codex sessions
+
+Invoke this skill with `$aae` in Codex. The same AE cycle, result schema, numbered patches, and report format apply in every agent. Resolve bundled `templates/` and `knowledge-base/` relative to the skill directory, not the project being optimized.
+
+- Read the target project's `AGENTS.md` instructions before setup. Use the user's existing scope, correctness requirements, and authorization; do not ask again for decisions already supplied. Choose a unique run tag when none is specified.
+- Use an isolated worktree or clean experiment branch when the target has unrelated changes. Commit only experiment files. Discard only changes belonging to the experiment; never reset away the user's work.
+- Honor a supplied experiment count or time budget. Run continuously within that budget and stop on user interruption or a genuine blocker. The indefinite-loop instructions below apply only when the user requests an open-ended session and the host permits continued execution. This skill does not change Codex permissions or create background scheduling.
+- Keep a resume checkpoint in `report/session.json`: baseline and best commit, current experiment, remaining budget, benchmark command, scope, assertions, and next hypothesis. On continuation, read this checkpoint and `results.tsv` before running another experiment.
+- Use Codex's available shell and file tools directly. Claude Code's `/loop`, permission flags, and Agent Teams are not prerequisites. Delegate only when authorized in the session or project instructions; benchmark runs must not compete for resources in ways that distort results.
+- Preserve the session artifacts after every experiment. If LaTeX is unavailable, retain the report sources and measurements and state that the PDF could not be built.
 
 ## Setup
 

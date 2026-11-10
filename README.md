@@ -26,6 +26,8 @@ The project includes a community-contributed [knowledge base](knowledge-base/) o
 
 ## Installation
 
+### Claude Code
+
 Inside Claude Code, type:
 
 ```
@@ -53,9 +55,51 @@ Using another agent? Just tell it to follow [AAE.md](AAE.md).
 
 </details>
 
+### Codex
+
+Inside a Codex session, ask:
+
+```text
+Install AAE as a Codex skill from https://github.com/CHSZLab/AgenticAlgorithmEngineering.
+Clone the repository and run its scripts/install_codex_skill.py installer,
+including the report templates and knowledge base.
+```
+
+Codex runs the installation for you; there is no need to open a separate terminal.
+If the repository is already checked out, ask Codex to install from that checkout instead.
+
+<details>
+<summary>Manual installation from a terminal</summary>
+
+Clone the framework and install the bundled skill, including the report templates and knowledge base:
+
+```bash
+git clone https://github.com/CHSZLab/AgenticAlgorithmEngineering.git
+cd AgenticAlgorithmEngineering
+python3 scripts/install_codex_skill.py
+```
+
+</details>
+
+The installer copies a self-contained skill to `${CODEX_HOME:-~/.codex}/skills/aae` and refuses to overwrite an existing installation. It includes only the report source files, not generated PDFs or build logs. The skill is available on your next Codex turn. Invoke it in the target project:
+
+```text
+$aae make the solver in src/ faster on the graphs in data/; run at most 20 experiments
+```
+
+Specify target files, benchmark command, metric and direction, correctness requirements, and an experiment count or time budget. Codex follows the same AE cycle and produces `results.tsv`, accepted patches, and report sources (plus a PDF when LaTeX is available). Session checkpoints support continuation after interruption.
+
+For a project-local installation, run from this checkout:
+
+```bash
+python3 scripts/install_codex_skill.py --dest /path/to/project/.agents/skills
+```
+
+To update, pull this checkout and install into a new destination, or move the existing `aae` skill aside before reinstalling. Existing installations are never overwritten automatically. See the [official skills documentation](https://developers.openai.com/codex/skills) for Codex skill discovery and invocation.
+
 ## Usage
 
-The agent must run in a mode that does not require user input, since the AE cycle is designed to run autonomously and indefinitely. If you are using Claude Code, launch it with `--dangerously-skip-permissions` (byPassPermissions mode). For other agent frameworks, ensure that all tool calls (file edits, shell commands, git operations) are auto-approved so the loop can proceed without interruption.
+Agree on the target, benchmark, correctness assertions, and run budget during setup, then let the agent execute the AE cycle within its configured permissions. Codex supports bounded sessions and checkpoints; see [Codex sessions](AAE.md#codex-sessions). An open-ended session runs until interrupted, subject to the host's execution limits. The Claude Code orchestration options below apply to Claude Code only.
 
 ### Keeping the Loop Alive with Agent Teams
 
