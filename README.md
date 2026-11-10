@@ -87,6 +87,14 @@ The installer copies a self-contained skill to `${CODEX_HOME:-~/.codex}/skills/a
 $aae make the solver in src/ faster on the graphs in data/; run at most 20 experiments
 ```
 
+For the best unattended AAE experience with Codex CLI, launch Codex in **YOLO mode** from the target project directory:
+
+```bash
+codex --yolo
+```
+
+`--yolo` is an alias for `--dangerously-bypass-approvals-and-sandbox`: it skips approval prompts and disables Codex's command sandbox, allowing the experiment loop to proceed without permission interruptions. Use it in a trusted, externally isolated environment such as a dedicated container or VM. It does not remove session execution limits or replace the agreed experiment budget.
+
 Specify target files, benchmark command, metric and direction, correctness requirements, and an experiment count or time budget. Codex follows the same AE cycle and produces `results.tsv`, accepted patches, and report sources (plus a PDF when LaTeX is available). Session checkpoints support continuation after interruption.
 
 For a project-local installation, run from this checkout:
