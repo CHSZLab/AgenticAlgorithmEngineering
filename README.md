@@ -101,6 +101,21 @@ To update, pull this checkout and install into a new destination, or move the ex
 
 Agree on the target, benchmark, correctness assertions, and run budget during setup, then let the agent execute the AE cycle within its configured permissions. Codex supports bounded sessions and checkpoints; see [Codex sessions](AAE.md#codex-sessions). An open-ended session runs until interrupted, subject to the host's execution limits. The Claude Code orchestration options below apply to Claude Code only.
 
+### Multi-component AAE
+
+At session start, the agent offers **multi-component AAE**, useful for long-running systems and algorithms where a separate full benchmark for every hypothesis would be expensive. The agent instruments the target code and tests multiple hypotheses in one shared benchmark run, with one hypothesis per component. It compares each component's profile against an instrumented baseline to decide independently which changes to keep or discard.
+
+Each component change gets its own Git commit before the shared run, so it can be reverted with `git revert <component-commit>` without removing the other changes. Shared profiling instrumentation has a separate commit. The agent records a hypothesis, component commit hash, measurement, and verdict for each component and exports each accepted component commit as its own numbered patch.
+
+If component interactions or profiling overhead prevent reliable attribution, the agent tests those hypotheses separately. It validates the retained combination against the overall performance metric and correctness assertions, keeping the benchmark harness unchanged.
+
+To request this mode explicitly, include this in your prompt to either Codex or Claude Code:
+
+```text
+Use multi-component AAE: instrument the components, test one hypothesis per
+component in a shared benchmark run, and commit each component change separately.
+```
+
 ### Keeping the Loop Alive with Agent Teams
 
 In practice, even with `--dangerously-skip-permissions`, the agent may eventually stop and ask for user input instead of continuing the loop. To solve this, use Claude Code's **Agent Teams** feature to set up a manager/executor pair that keeps the loop running autonomously.
