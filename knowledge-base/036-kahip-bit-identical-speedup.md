@@ -55,6 +55,19 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    configuration -16%, one job -20%). A distribution's output can also be replaced by its closed form when the library's
    algorithm is known: libstdc++'s `uniform_int_distribution(0,1)` on `mt19937` returns the top bit of one draw.
 
+12. **Look for work whose result is discarded, not for constant factors.** After six micro-changes in a row were neutral
+   (0.997 to 1.031), a cost-center review asked, per configuration, which work is redundant (recomputed, rebuilt, or thrown
+   away). Instrumenting the flow refinement showed that 99.6% of max-flow solves end with a cut equal to the current one, after
+   which the caller undoes everything. The max flow is bounded by the capacity U of the edges between the two flow regions; when
+   U equals the current cut, push-relabel can stop the moment the sink has received U and skip the source-set search. Exact for
+   the configurations without most-balanced cuts (no random draws in that path): flow time -15% (eco) and -21% (esocial),
+   whole benchmark -1.4% geomean. Where equal cuts with better balance are accepted (most-balanced cuts), the same shortcut is
+   not exact.
+13. **Reuse a pointer the previous lookup already produced.** The boundary update looked up the block pair twice per edge
+   (once inside the node-set update, once for the edge cut); keeping the pair entry from the first lookup cut quotient-graph
+   refinement by 3.6% and k-way FM by 5%. Fusing a counting pass with the construction pass of the flow network (one scan of
+   each region node instead of two) cut flow time by 4%.
+
 ## Experiment Data
 
 | exp | change | geomean vs original | verdict |
@@ -83,7 +96,18 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 026 | ensemble numbering without a hash map | **0.6925** (total 0.7172, confirmed by the 030 run) | keep |
 | 027 | SCC with vector stacks in most-balanced min cut | flow time 1.005 | discard |
 | 028 | degree node ordering via packed keys | coarsening 0.992 | discard (below floor) |
+| 029 | cluster-id remap via array | coarsening 0.994 | discard (below floor) |
 | 030 | open-addressing index in the bucket queue | multitry 1.007 | discard (A/B gain not reproduced) |
+| 031 | edge cut through the already looked-up block-pair entry | 0.6838 (total 0.6989, with 029) | keep |
+| 032 | two-entry block-pair cache | A/B 0.997 | discard |
+| 033 | one scan per flow-region node (edges and outer-boundary flag) | **0.6849** (total 0.6964) | keep |
+| 034 | quotient graph via counting sort | A/B 1.001 | discard |
+| 035 | open-addressing start-node dedup sets | A/B 1.004 | discard |
+| 036 | label-propagation prefetch one stage deeper | A/B 1.031 (slower) | discard |
+| 037 | reverse capacity stored on each flow edge | A/B 0.999 | discard |
+| 038 | reuse start-node gains in the k-way queue setup (replay tie draws) | 0.6845 (total 0.6923; k-way FM 0.976) | discard (below floor) |
+| 039 | 038 plus gain cache across searches (version stamps) | A/B 0.994 to 1.012 | discard |
+| 040 | stop push-relabel when the sink holds the region-cut capacity equal to the current cut | **0.6752** (total 0.6879) | keep |
 
 Every kept step: 0 incorrect of 537 jobs, crosscheck OK on 864 runs.
 
@@ -111,6 +135,13 @@ Every kept step: 0 incorrect of 537 jobs, crosscheck OK on 864 runs.
 - **Trusting a 7-job A/B for small gains.** An open-addressing index in the FM bucket queue showed 0.967 on one job in
   the A/B and 1.017 on the same job in the full run; gains under about 3% in the A/B need the full run before they count.
 - **Array-based queues in push-relabel** (instead of `std::queue`) were neutral: the queues are not where the time goes.
+- **Deeper software prefetch.** Adding a second prefetch stage in the label-propagation sweep (cluster ids two nodes ahead,
+  the cluster weights one ahead) was 3% slower: the extra loops over up to 32 edges cost more than the misses they hide.
+- **Caching gains across local searches.** A per-node version stamp (bumped for a moved node and all its neighbors) to reuse
+  gain computations across consecutive k-way searches almost never hit: the hubs that dominate the cost have a neighbor move
+  in nearly every search, and the stamping slowed the move loop.
+- **Caching repeated flow problems.** Consecutive flow iterations on the same block pair never had identical regions (the
+  region search starts from randomly permuted boundary nodes), so there was nothing to cache; the waste was in the solve itself.
 
 ## Environment
 
