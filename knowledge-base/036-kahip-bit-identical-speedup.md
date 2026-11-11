@@ -67,6 +67,20 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    (once inside the node-set update, once for the edge cut); keeping the pair entry from the first lookup cut quotient-graph
    refinement by 3.6% and k-way FM by 5%. Fusing a counting pass with the construction pass of the flow network (one scan of
    each region node instead of two) cut flow time by 4%.
+14. **Watch for k*k structures built with a large k.** A flat block-pair index of size k*k sped up the boundary lookups,
+   but the same class is also constructed during contraction with k = number of coarse nodes, which made one job 37% slower
+   (quadratic memory fill). Allocating the index lazily on first use and only for k <= 1024 kept the gain (-2%).
+15. **When bit-identity is relaxed to "same quality", drop work that only feeds random draws.** Later in the session the owner
+   allowed changes that alter random decisions if the geometric mean cut over three seeds stays within 0.1% of the original
+   (plus balance and no crashes). Three changes then paid: an array-plus-position-index boundary set instead of an iterated
+   `unordered_map` (quotient-graph refinement -12%, eco -20%); no gain computation for k-way neighbors that are already moved and
+   no longer queued (their gains were computed only so the tie-breaking draws stayed in sync; multitry -10%); and a per-round
+   incremental connectivity cache (block, weight) per node, updated on each move, for nodes of degree >= 32 (multitry -3%
+   overall, -50 to -75% on social graphs). Quality ratios stayed at 0.9998 to 0.9999.
+16. **Per-instance state in an object created per local search costs O(n) per search.** The first version of that cache resized
+   an n-sized header array in each refinement core, and the core is constructed once per localized search; road graphs became
+   7% slower with identical output. A static store with a global round stamp (never reset, so stale entries from other levels
+   can never match) removed it.
 
 ## Experiment Data
 
@@ -108,8 +122,17 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 038 | reuse start-node gains in the k-way queue setup (replay tie draws) | 0.6845 (total 0.6923; k-way FM 0.976) | discard (below floor) |
 | 039 | 038 plus gain cache across searches (version stamps) | A/B 0.994 to 1.012 | discard |
 | 040 | stop push-relabel when the sink holds the region-cut capacity equal to the current cut | **0.6752** (total 0.6879) | keep |
+| 041 | lazy flat k*k block-pair index (k <= 1024) | 0.6723 (total 0.6817) | carried (below floor alone) |
+| 042 | 041 + 038 (start-node gains reused) | **0.6694** (total 0.6748) | keep |
+| 043-045 | residual back-edge count once per node, weighted degrees once, dense flow node map | **0.6643** (total 0.6613) | keep |
+| 046 | (quality rule) boundary set as array + position index | **0.6327** (total 0.6047), cut ratio 0.99986 | keep |
+| 047 | (quality rule) no gains for moved, unqueued k-way neighbors; no tie replay | **0.6279** (total 0.5844), cut ratio 0.99981 | keep |
+| 048 | (quality rule) incremental gain cache for all nodes, per-instance arrays | 0.6261 (total 0.6017) | discard (roads 1.2 to 1.3x) |
+| 049 | 048 with a degree >= 32 gate and a shared static store | **0.6245** (total 0.5783), cut ratio 0.99978 | keep |
+| 050 | 049 without the gate | 0.6247 (total 0.5834) | discard (meshes gain, roads lose) |
 
-Every kept step: 0 incorrect of 537 jobs, crosscheck OK on 864 runs.
+Every kept step: 0 incorrect of 537 jobs; bit-identical steps also crosscheck OK on 864 runs, quality-rule steps passed the
+three-seed cut gate (A/A noise sd 0.0011).
 
 ## What Didn't Work
 
@@ -143,6 +166,12 @@ Every kept step: 0 incorrect of 537 jobs, crosscheck OK on 864 runs.
 - **Caching repeated flow problems.** Consecutive flow iterations on the same block pair never had identical regions (the
   region search starts from randomly permuted boundary nodes), so there was nothing to cache; the waste was in the solve itself.
 
+- **Cache-everything for a per-node quantity that is read about once.** The incremental gain cache gave 0.84 to 0.86 multitry
+  time on FE meshes but 1.06 to 1.10 on road graphs (degree about 2.5): each node is queried about once per round, so the
+  build plus the per-move updates are pure overhead. A three-seed A/B on five jobs (two FE meshes, one road) predicted 0.963
+  and the full run gave 1.005; pick A/B jobs per graph class in proportion to the benchmark.
+- **Single-seed A/B under the quality rule.** Once random decisions may change, one seed of one job can be 1.2x slower or
+  faster from a different trajectory alone (144 strong 64: 1.21 on seed 1, 0.90 on seeds 2 and 3). Sum several seeds.
 ## Environment
 
 C++11/GCC 13, Release with KaHIP's default flags (no flag changes allowed), single-threaded, 16-core x86 machine with one job
