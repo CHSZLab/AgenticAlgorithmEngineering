@@ -144,6 +144,15 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    that reads two degrees from the graph: identical output, 1% on social configurations. The same idea was neutral 30
    experiments earlier; it paid once the label propagation around it had become faster.
 
+30. **Profile the configurations with the worst ratio, not the largest jobs.** With a geomean over jobs, the small jobs of
+   the fast configurations set the metric. Their profile showed costs outside the partitioner proper: the final cut, boundary
+   and communication-volume report in three graph passes (one pass: -1.2% geomean, identical stdout) and zero-filling of
+   memory that is overwritten anyway.
+31. **Do not zero what is about to be written.** basicGraph value-initialized m edges and m edge ratings in start_construction,
+   and contraction sizes them by the finer graph's m and trims later. A default-init allocator for the two edge arrays, with
+   new_edge writing the zero weight and rating itself, keeps every created edge identical and never touches the trimmed tail
+   (fast 0.93 to 0.97 on small jobs); the same for the graph-file and partition-output buffers. Together -1.2% geomean.
+
 ## Experiment Data
 
 | exp | change | geomean vs original | verdict |
@@ -217,7 +226,15 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 087 | label-propagation active flags as a bitset over visiting positions | A/B 0.998 | discard |
 | 088 | degree sort over (degree, node) entries, same comparisons | A/B 0.989 | carried |
 | 089 | two-stage prefetch in label propagation (repeat of a recorded negative) | A/B 1.039 | discard |
-| 086-090 | full run of the three exact passengers | 0.3897 (total 0.2962), identical, below the 1% floor | pending |
+| 086-090 | full run of the three exact passengers | 0.3897 (total 0.2962), identical, below the 1% floor | carried |
+| 091-092 | quotient graph of a clustering and extracted blocks built with their real edge counts (with 086-090) | **0.3842** (total 0.2939), identical | keep |
+| 093 | matching contraction: coarse edges collected first, real edge count | A/B 1.020 | discard |
+| 094 | final cut, boundary nodes and max communication volume in one pass | **0.3797** (total 0.2933), identical | keep |
+| 095 | cache of degree orders keyed by the verified degree sequence | A/B 0.998 | discard |
+| 096, 098 | graph edge arrays and IO buffers not zeroed before they are written | **0.3752** (total 0.2920), identical | keep |
+| 097 | matching contraction without the precomputed coarse-target array | A/B 1.009 | discard |
+| 099 | label-propagation prefetch only for the next node if active | A/B 1.001 | discard |
+| 100 | cluster contraction builds the quotient graph from the coarse mapping directly | A/B 0.997 | carried |
 Every kept step: 0 incorrect of 537 jobs; bit-identical steps also crosscheck OK on 864 runs, quality-rule steps passed the
 three-seed cut gate (A/A noise sd 0.0011).
 
@@ -281,6 +298,11 @@ three-seed cut gate (A/A noise sd 0.0011).
   ahead) was 3.9% slower, as this entry already said for the same idea; read the negatives list before starting an idea.
 - **A stripe-membership bitmap in the flow-graph build** (n bits instead of the partition array) was neutral (A/B 1.002): the
   cost on hub nodes is the edge stream itself, not the partition lookups.
+- **Restructuring the matching contraction.** Collecting coarse edges first to build with the real edge count (A/B 1.020)
+  and reading coarse targets inside the visit loop instead of a precomputed m-sized array (A/B 1.009) were both slower: the
+  separate sequential pass hides latency that the dependent load in the loop exposes. Removing the zero fill around it paid.
+- **Caching degree orders across calls** (keyed by the full degree sequence, verified on reuse) was neutral (A/B 0.998): the
+  repeated sorts are not on identical graphs often enough.
 ## Environment
 
 C++11/GCC 13, Release with KaHIP's default flags (no flag changes allowed), single-threaded, 16-core x86 machine with one job
