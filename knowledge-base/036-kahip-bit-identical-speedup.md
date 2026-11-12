@@ -81,6 +81,25 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    an n-sized header array in each refinement core, and the core is constructed once per localized search; road graphs became
    7% slower with identical output. A static store with a global round stamp (never reset, so stale entries from other levels
    can never match) removed it.
+17. **Defer a side structure that the search never reads, and replay only the kept moves.** In both the k-way and the 2-way
+   FM search every tentative move updated the block-pair boundary sets, and every move rolled back after the best prefix
+   updated them again; the searches themselves only read block weights and counts. Undoing the tail by resetting partition and
+   weights only, then rolling the kept prefix back and replaying it in order through the same boundary updates, cut multitry
+   time by 36% (total -10%) and 2-way refinement on the eco/esocial configs by 43 to 50% (total -11%). A debug build checked,
+   every 20th to 50th search, that every cut-edge endpoint is in its pair boundary and every pair cut equals the real cut. The
+   boundary order changes, so this is a quality-rule change; the cut ratio went from 1.00049 to 0.99929.
+18. **Visit only nodes whose neighborhood changed in label propagation.** A per-node active flag (cleared on visit, set for all
+   neighbors when a node changes cluster) plus a stop when an iteration changes nothing cut coarsening of the social configs by
+   30% (quality rule, cut ratio 0.9998). Re-activating undecided or size-blocked nodes as well made it slower and worse.
+19. **Move deterministic per-graph work out of repetition loops.** The clustering ensemble runs up to 18 label propagations on
+   the same graph and sorted the nodes by degree in every run; sorting once per ensemble and numbering clusters through an
+   array instead of an `unordered_map` cut ssocial coarsening by 15% with identical output.
+20. **Per-search hash maps over node ids can be a pooled stamped array.** The moved-node table and the heap's node-to-slot index
+   were open-addressing maps created per local search (grown from 32 slots each time). A per-node array with a generation
+   stamp, taken from a pool of four stores (two FM heaps and a moved table can be alive at once; a hash map is the fallback when
+   the pool is empty), made creation O(1) and lookups direct: multitry -19%, quality-graph refinement -11%, identical output,
+   peak memory +70 MB on the 2.2M-node graph. Together with keeping the push-relabel discharge's distance and excess in locals
+   (stores through edge records forced reloads; flow -4%) this gave total -7%.
 
 ## Experiment Data
 
@@ -130,6 +149,13 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 048 | (quality rule) incremental gain cache for all nodes, per-instance arrays | 0.6261 (total 0.6017) | discard (roads 1.2 to 1.3x) |
 | 049 | 048 with a degree >= 32 gate and a shared static store | **0.6245** (total 0.5783), cut ratio 0.99978 | keep |
 | 050 | 049 without the gate | 0.6247 (total 0.5834) | discard (meshes gain, roads lose) |
+| 051 | (quality rule) active-node label propagation | **0.5929** (total 0.5722), cut ratio 0.99980 | keep |
+| 052 | 051 plus re-activation of undecided nodes | 0.6210 (total 0.5752), cut ratio 1.00079 | discard |
+| 053 | (quality rule) k-way rounds: boundaries updated only for kept moves | **0.5739** (total 0.5140), cut ratio 1.00049 | keep |
+| 054 | (quality rule) 2-way FM: boundaries updated only for kept moves | **0.5152** (total 0.4562), cut ratio 0.99929 | keep |
+| 055 | degree order once per clustering ensemble, array cluster-id remap | **0.5060** (total 0.4447), identical | keep |
+| 056 | degree sort on packed (degree, node) keys | A/B 1.004 | discard |
+| 057-060 | pooled stamped per-node maps (moved table, heap index), push-relabel discharge with locals | **0.4819** (total 0.4124), identical | keep |
 
 Every kept step: 0 incorrect of 537 jobs; bit-identical steps also crosscheck OK on 864 runs, quality-rule steps passed the
 three-seed cut gate (A/A noise sd 0.0011).
@@ -172,6 +198,12 @@ three-seed cut gate (A/A noise sd 0.0011).
   and the full run gave 1.005; pick A/B jobs per graph class in proportion to the benchmark.
 - **Single-seed A/B under the quality rule.** Once random decisions may change, one seed of one job can be 1.2x slower or
   faster from a different trajectory alone (144 strong 64: 1.21 on seed 1, 0.90 on seeds 2 and 3). Sum several seeds.
+- **Keeping more nodes active in label propagation to buy back quality.** Re-flagging nodes whose vote was tied or blocked by
+  the size bound kept most nodes active (coarsening 1.21x) and the cut ratio got worse (ssocial 1.0047 to 1.0058), not better.
+- **Packing the sort key next to the node id for a degree sort** gave nothing (A/B 1.004): one sort of n entries per level is
+  cheap next to the label propagation that follows; the same trick did pay for the edge-rating sort earlier (2m entries).
+- **Reading per-config cut ratios from three seeds.** After 053 the eco ratio moved from 0.9998 to 1.0039; seeds 4 to 6 gave
+  0.9938 and six seeds 0.9992. Per-config ratios over three seeds swing by about +-0.4%.
 ## Environment
 
 C++11/GCC 13, Release with KaHIP's default flags (no flag changes allowed), single-threaded, 16-core x86 machine with one job
