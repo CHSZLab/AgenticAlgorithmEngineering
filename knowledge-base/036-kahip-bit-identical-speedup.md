@@ -1,4 +1,4 @@
-# Speeding up a mature multilevel graph partitioner with bit-identical output (KaHIP kaffpa)
+# Speeding up a mature multilevel graph partitioner with bit-identical or quality-preserving output (KaHIP kaffpa)
 
 ## Problem
 
