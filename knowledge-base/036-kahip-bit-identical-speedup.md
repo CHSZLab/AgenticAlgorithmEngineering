@@ -166,6 +166,12 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    1.00050) and then k >= 32 (Q 1.00078) took -8% total; a 6-seed check on the final binary (Q 1.00030, all configurations
    within 0.35%) covered the bias of choosing buckets from gate data. Measure where the search ends before cutting a search
    limit: 95 to 99% of the localized multitry calls stop after their first round, so the round limit is not a lever.
+34. **Replicate std::sort when ties must keep their order, then make the replica faster.** std::sort's result depends only
+   on the outcomes of its comparisons, so a copy of libstdc++'s introsort (same pivot choice, depth limit, insertion-sort
+   threshold) gives the same arrangement, ties included. In the copy, the Hoare partition collects the positions of the
+   elements to swap blockwise without branches (BlockQuicksort style) and then swaps the same pairs in the same order:
+   identical output, 0.66x sort time on the edge-rating and degree-order sorts (2.5 to 6.6% of the profiled jobs). Together
+   with reusing the label-propagation setup of the coarsest graph across initial-partitioning repetitions: -2.0% geomean.
 
 ## Experiment Data
 
@@ -259,6 +265,20 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 108 | parameter reduction: 9 ensemble clusterings for k < 8 (were 18, 17) | **0.3657** (total 0.2738), Q 1.00050 | keep |
 | 109 | parameter reduction: 2 ensemble clusterings for k >= 32 (were 3) | **0.3601** (total 0.2588), Q 1.00078, 6-seed 1.00030 | keep |
 | 110 | parameter reduction: strong multitry search limit alpha 10 to 5 | screen Q +0.15%, time 0.95 to 0.97 | discard |
+| 111 | single-clustering label propagation on the visiting-order copy | A/B 0.987 | carried |
+| 112 | exact std::sort replica with a blockwise branchless partition (edge-rating and degree-order sorts) | A/B 0.992 (with 111) | carried |
+| 113 | initial-partitioning repetitions reuse the coarsest graph's degree order and visiting-order copy | A/B 0.993 | carried |
+| 114 | most balanced cut: topological sort on CSR arrays (with 111 to 113) | **0.3527** (total 0.2557), identical | keep |
+| 115, 117, 118 | software prefetch in matching contraction, flow-network build, 2-way FM queue init and boundary updates | A/B 0.996, 0.999, 0.995; full run 0.3541 | discard |
+| 116 | revert of 114 (its own A/B was 1.008) | A/B 1.003 | discard |
+| 119 | prefetch in 2-way FM neighbor degree updates | A/B 1.000 | discard |
+| 120 | two-stage prefetch in label propagation | A/B 1.017 | discard |
+| 121 | label propagation gathers target blocks once per node into a buffer | A/B 1.018 | discard |
+| 122 | uncached k-way gain loop with one slot reference and one weight load per edge | A/B 1.003 | discard |
+Final result (converged after 122 experiments; the last 8 brought no full-run gain): the original and the final binary run
+back to back give a geomean ratio of 0.3517 (2.84x faster) and a total of 0.2562 (6503 s to 1666 s, 3.90x), 0 incorrect.
+Cut quality against the original: Q 1.00078 on the three-seed gate and 1.00030 on seeds 4 to 6.
+
 Every kept step: 0 incorrect of 537 jobs; bit-identical steps also crosscheck OK on 864 runs, quality-rule steps passed the
 three-seed cut gate (A/A noise sd 0.0011).
 
@@ -333,6 +353,10 @@ three-seed cut gate (A/A noise sd 0.0011).
   node and block): all at 1.000 +- 0.003; the total is set by the large jobs.
 - **Cutting the label-propagation iterations or the multitry search limit** under rule (b): 4 to 5% faster on the affected
   configurations for 0.15 to 0.6% of cut, far fewer seconds per unit of quality than the clustering count.
+- **Summing sub-1% A/B results.** Three exact prefetch changes measured 0.996, 0.999 and 0.995 in targeted 3-seed A/Bs, but
+  the full run with all three was 0.4% slower than without them. Below 1% per change, a targeted A/B is noise; only a full
+  run decides. Late attempts on the hottest loops (another label-propagation prefetch, a target-block buffer, a hand-hoisted
+  gain loop) were 0 to 2% slower: those loops are bound by random block lookups, and the compiler already hoists the loads.
 
 ## Environment
 
