@@ -117,6 +117,23 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    frames were missing: initial partitioning showed 12% of samples while its timer said 53% of the run. Leaf shares were
    right; inclusive shares of outer frames were not.
 
+24. **Try a different max-flow algorithm in place, on the real flow problems.** Flow refinement solves many small,
+   shallow problems (a stripe around the cut between two big terminals). Boykov-Kolmogorov, with search trees grown from both
+   terminals and reused across augmentations, beat the tuned two-phase push-relabel by 17% on whole runs (d_flow 0.58x with
+   the next item). The source tree at termination is exactly the set reachable from the source in the residual graph, so callers
+   that use only the minimal source side stay bit-identical; most-balanced cuts read the flow and become a quality-rule change.
+25. **Model an undirected edge as one edge pair with capacity w both ways.** Two directed edges with zero-capacity partners
+   (4 residual edges) become one pair (2 residual edges). For the residual relation used by most-balanced cuts, "f1 < w or
+   f2 > 0" over the old pair equals "net f < w" over the new one, so only edge multiplicities change.
+26. **Filter before sorting.** The gpa matching permuted and sorted all 2m directed edges and then skipped the ones the grow loop
+   cannot use (back direction, rating 0, weight bound). Filtering first halves the sort and needs fewer random draws; the order
+   of the usable edges changes with the tie-break draws, so it is a quality-rule change (coarsening 0.59x on strong).
+27. **Memoize a quadratic check while its inputs are frozen.** Applying a flow cut updated the boundary per stripe node and per
+   neighbor in another block by rescanning that neighbor's adjacency for a neighbor in the old block (deg x deg on hubs; 18% of
+   a web-graph run). The partition does not change during the apply loop, so the answer per (node, block) can be cached with a
+   stamp for the batch: identical output, one web graph 3.1x faster, total -1.9%. The shortcut "update only moved nodes" was not
+   identical: the calls for unmoved nodes also clean up boundary entries.
+
 ## Experiment Data
 
 | exp | change | geomean vs original | verdict |
@@ -177,7 +194,12 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 062 | 24-byte flow edges with the partner's capacity (global relabeling without the partner read) | A/B 0.988, same as 061 alone | discard |
 | 065 | gpa matching: grow paths over the sorted (rating, edge) pairs | A/B no gain | discard |
 | 064-067 | two-phase push-relabel (quality rule for most-balanced cuts), node-state record, k-way neighbor prefetch | **0.4637** (total 0.3850), cut ratio 0.99944 | keep |
-| 068-070 | no phase 2 without most-balanced cuts (reversed preflow), pooled solver buffers, stamped start-node sets | identical, full run pending | candidate |
+| 068-070 | no phase 2 without most-balanced cuts (reversed preflow), pooled solver buffers, stamped start-node sets | **0.4571** (total 0.3771), identical | keep |
+| 071-073 | Boykov-Kolmogorov max flow, one edge pair per undirected stripe edge, no unused source set | **0.4219** (total 0.3222), cut ratio 0.99932 | keep |
+| 074 | SCC stacks on std::vector instead of std::deque | A/B 1.004 | discard |
+| 075-077 | gpa: filter usable edges before permute and sort (quality rule), prefetched random permutation, grow-loop prefetch | **0.4055** (total 0.3133), cut ratio 1.00045 (six seeds 0.99988) | keep |
+| 078 | memoized neighbor-in-block test while applying a flow cut | **0.4025** (total 0.3075), identical | keep |
+| 079-080 | more prefetches in the k-way move and label-propagation loops | A/B 1.007 and 1.014 | discard |
 Every kept step: 0 incorrect of 537 jobs; bit-identical steps also crosscheck OK on 864 runs, quality-rule steps passed the
 three-seed cut gate (A/A noise sd 0.0011).
 
@@ -229,6 +251,11 @@ three-seed cut gate (A/A noise sd 0.0011).
   partner read per scanned edge) gained nothing on top of the other changes (A/B 0.988 either way).
 - **Small prefetches and carried-over sort keys in coarsening matching** (gpa grow loop over the sorted pairs, prefetch of
   neighbor adjacencies in the k-way gain update) gave 0 to 0.5% each: below the 1% floor, only worth carrying as passengers.
+- **More software prefetch in loops that already have some.** Prefetching partition entries, heap slots and stamps of the
+  first 32 neighbors in the k-way move, and cluster ids 16 edges ahead in label propagation for high-degree nodes, were both
+  slower (1-seed A/B 1.007 and 1.014 cumulative, 7 of 8 jobs worse): the hardware prefetcher or the existing per-node prefetch
+  already covers these accesses.
+- **Plain std::vector instead of std::deque for SCC stacks** gave nothing (A/B 1.004); the SCC is a small part of the flow time.
 ## Environment
 
 C++11/GCC 13, Release with KaHIP's default flags (no flag changes allowed), single-threaded, 16-core x86 machine with one job
