@@ -134,6 +134,16 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    stamp for the batch: identical output, one web graph 3.1x faster, total -1.9%. The shortcut "update only moved nodes" was not
    identical: the calls for unmoved nodes also clean up boundary entries.
 
+28. **Put what one lookup reads into one cache line.** A stamped per-node map kept stamps and values in two arrays, and label
+   propagation kept the vote counter and the cluster size in two; each lookup touched two random lines. One array of
+   {stamp, value} and one of {votes, size} gave -1.1% total (coarsening 0.97x) with identical output. The binary heap without
+   its separate element array (entries {key, node}, a stamped map to the heap position, hole-based sifts with the same
+   comparisons, so equal keys end at the same positions) gave -1.8% total (multitry 0.956x).
+29. **The same std::sort over a smaller, self-contained element type.** std::sort's steps depend only on comparison results, so
+   sorting (degree, node) entries with a comparator on the degree gives the same order as sorting node ids with a comparator
+   that reads two degrees from the graph: identical output, 1% on social configurations. The same idea was neutral 30
+   experiments earlier; it paid once the label propagation around it had become faster.
+
 ## Experiment Data
 
 | exp | change | geomean vs original | verdict |
@@ -200,6 +210,14 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 075-077 | gpa: filter usable edges before permute and sort (quality rule), prefetched random permutation, grow-loop prefetch | **0.4055** (total 0.3133), cut ratio 1.00045 (six seeds 0.99988) | keep |
 | 078 | memoized neighbor-in-block test while applying a flow cut | **0.4025** (total 0.3075), identical | keep |
 | 079-080 | more prefetches in the k-way move and label-propagation loops | A/B 1.007 and 1.014 | discard |
+| 081-082 | BK: reverse residual read from the edge itself for symmetric stripe pairs; heap without element array | **0.3965** (total 0.3020), identical | keep |
+| 083 | stripe membership bitmap in the flow-graph build | A/B 1.002 | discard |
+| 084-085 | {votes, size} cluster slots in label propagation, {stamp, value} slots in stamped maps | **0.3927** (total 0.2986), identical | keep |
+| 086, 090 | k-way and 2-way FM moves templated on the queue type (no virtual calls on the heap) | A/B 0.998 each | carried |
+| 087 | label-propagation active flags as a bitset over visiting positions | A/B 0.998 | discard |
+| 088 | degree sort over (degree, node) entries, same comparisons | A/B 0.989 | carried |
+| 089 | two-stage prefetch in label propagation (repeat of a recorded negative) | A/B 1.039 | discard |
+| 086-090 | full run of the three exact passengers | 0.3897 (total 0.2962), identical, below the 1% floor | pending |
 Every kept step: 0 incorrect of 537 jobs; bit-identical steps also crosscheck OK on 864 runs, quality-rule steps passed the
 three-seed cut gate (A/A noise sd 0.0011).
 
@@ -256,6 +274,13 @@ three-seed cut gate (A/A noise sd 0.0011).
   slower (1-seed A/B 1.007 and 1.014 cumulative, 7 of 8 jobs worse): the hardware prefetcher or the existing per-node prefetch
   already covers these accesses.
 - **Plain std::vector instead of std::deque for SCC stacks** gave nothing (A/B 1.004); the SCC is a small part of the flow time.
+- **Skipping inactive nodes word-wise in label propagation.** With 66% of scanned positions inactive, a bitset over visiting
+  positions (with a node-to-position map) skips them without touching the node, but finding the next three active positions for
+  the prefetches cost as much as the skipped tests (A/B 0.998).
+- **Re-trying a recorded negative.** A two-stage prefetch in label propagation (cluster ids two nodes ahead, cluster slots one
+  ahead) was 3.9% slower, as this entry already said for the same idea; read the negatives list before starting an idea.
+- **A stripe-membership bitmap in the flow-graph build** (n bits instead of the partition array) was neutral (A/B 1.002): the
+  cost on hub nodes is the edge stream itself, not the partition lookups.
 ## Environment
 
 C++11/GCC 13, Release with KaHIP's default flags (no flag changes allowed), single-threaded, 16-core x86 machine with one job
