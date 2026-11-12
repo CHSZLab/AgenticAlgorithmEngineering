@@ -153,6 +153,20 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    new_edge writing the zero weight and rating itself, keeps every created edge identical and never touches the trimmed tail
    (fast 0.93 to 0.97 on small jobs); the same for the graph-file and partition-output buffers. Together -1.2% geomean.
 
+32. **Lay the data out in visiting order when the same sweep repeats over the same graph.** ssocial coarsening intersects up
+   to 18 label-propagation clusterings per level, each a 10-iteration sweep in the same degree order. A copy of the graph
+   stored in that order, built once per level and shared by all clusterings, makes the node and edge reads sequential. The
+   cluster labels become positions; they are only compared for equality and renumbered by first occurrence in node order, so
+   the output stays identical. 3-seed A/B 0.923 on ssocial jobs (web-Google 0.82), -3.5% total together with two
+   passengers. Five earlier prefetch variants on the scattered layout had only hidden the latency.
+33. **Price a parameter reduction per bucket, then keep the cheap buckets (rule b).** Halving the number of ensemble
+   clusterings for every k passed the gate exactly at the threshold (Q 1.00100) and broke the per-configuration guard
+   (ssocial 1.0051). The same gate data per k bucket showed where the quality went: k=8 cost 0.9% for little time, k=2 cost
+   0.17% for a 2x to 5x speedup (fewer clusterings give coarser intersections and far fewer levels). Keeping only k < 8 (Q
+   1.00050) and then k >= 32 (Q 1.00078) took -8% total; a 6-seed check on the final binary (Q 1.00030, all configurations
+   within 0.35%) covered the bias of choosing buckets from gate data. Measure where the search ends before cutting a search
+   limit: 95 to 99% of the localized multitry calls stop after their first round, so the round limit is not a lever.
+
 ## Experiment Data
 
 | exp | change | geomean vs original | verdict |
@@ -235,6 +249,16 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 097 | matching contraction without the precomputed coarse-target array | A/B 1.009 | discard |
 | 099 | label-propagation prefetch only for the next node if active | A/B 1.001 | discard |
 | 100 | cluster contraction builds the quotient graph from the coarse mapping directly | A/B 0.997 | carried |
+| 101 | random matching built without zero fill (reserve + push_back) | A/B 1.000 | discard |
+| 102 | one boundary insert per (node, target block) instead of per cut edge | A/B 1.003 | discard |
+| 103 | exact replay of recorded gain events for hub nodes in the multitry start-node scan | A/B 1.038 | discard |
+| 104 | most balanced minimum cut on arrays from the flow graph, vector-stack SCC, bucketed components | A/B 0.996 | carried |
+| 105 | ensemble label propagation on a copy of the graph in visiting order (with 100, 104) | **0.3712** (total 0.2818), identical | keep |
+| 106 | parameter reduction: ensemble clusterings halved for every k | gate Q 1.00100, ssocial 1.0051 over the guard | discard |
+| 107 | parameter reduction: ssocial label-propagation iterations 10 to 5 | screen Q +0.6%, time 0.96 | discard |
+| 108 | parameter reduction: 9 ensemble clusterings for k < 8 (were 18, 17) | **0.3657** (total 0.2738), Q 1.00050 | keep |
+| 109 | parameter reduction: 2 ensemble clusterings for k >= 32 (were 3) | **0.3601** (total 0.2588), Q 1.00078, 6-seed 1.00030 | keep |
+| 110 | parameter reduction: strong multitry search limit alpha 10 to 5 | screen Q +0.15%, time 0.95 to 0.97 | discard |
 Every kept step: 0 incorrect of 537 jobs; bit-identical steps also crosscheck OK on 864 runs, quality-rule steps passed the
 three-seed cut gate (A/A noise sd 0.0011).
 
@@ -303,6 +327,13 @@ three-seed cut gate (A/A noise sd 0.0011).
   separate sequential pass hides latency that the dependent load in the loop exposes. Removing the zero fill around it paid.
 - **Caching degree orders across calls** (keyed by the full degree sequence, verified on reuse) was neutral (A/B 0.998): the
   repeated sorts are not on identical graphs often enough.
+- **Replaying recorded gain events for hub nodes** in the multitry start-node scan (exact, A/B 1.038): one of a hub's many
+  neighbors moves in almost every round, so the recorded events are invalidated before reuse and recording is extra cost.
+- **Removing per-job fixed costs below 0.5%** (zero fill of two n-sized arrays in the random matching, one boundary insert per
+  node and block): all at 1.000 +- 0.003; the total is set by the large jobs.
+- **Cutting the label-propagation iterations or the multitry search limit** under rule (b): 4 to 5% faster on the affected
+  configurations for 0.15 to 0.6% of cut, far fewer seconds per unit of quality than the clustering count.
+
 ## Environment
 
 C++11/GCC 13, Release with KaHIP's default flags (no flag changes allowed), single-threaded, 16-core x86 machine with one job
