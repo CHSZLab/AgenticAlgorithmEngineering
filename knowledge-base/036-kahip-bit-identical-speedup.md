@@ -101,6 +101,22 @@ median wall-time ratios against the original. Correctness is the sha256 of every
    peak memory +70 MB on the 2.2M-node graph. Together with keeping the push-relabel discharge's distance and excess in locals
    (stores through edge records forced reloads; flow -4%) this gave total -7%.
 
+21. **Measure where an algorithm's work goes, not just which lines are hot.** Counting push-relabel discharges after the last
+   change of the sink's excess showed that 35 to 67% of them (road and social stripes) only returned excess to the source:
+   KaHIP's single-phase FIFO lets nodes with label >= n creep upward one relabel at a time. A textbook two-phase solver (maximum
+   preflow on labels < n, then excess return with labels n + exact distance to the source) cut flow time by 12.5% and total
+   time by 5.6%. A line profile had only shown "discharge" and "global relabeling" as hot.
+22. **The minimal source side is the same for every maximum flow; use that to change solvers exactly.** When the caller only
+   uses the set of nodes reachable from the source in the residual graph (KaHIP without most-balanced cuts), any correct
+   maximum-flow algorithm gives bit-identical output. Even the second phase can go: on the reversed network a maximum preflow
+   from the original sink already fixes the cut closest to its sink, and the nodes that can reach the original source there
+   are exactly that set. Where the caller reads the flow itself (most-balanced cuts from residual SCCs), a different maximum
+   flow is a quality-rule change; here it passed at cut ratio 0.99944.
+23. **Check that the profiler records full stacks before trusting inclusive shares.** The LD_PRELOAD sampler had its backtrace
+   depth fixed at 8 frames, so inside deep recursion (w-cycles plus recursive bisection in initial partitioning) the outer
+   frames were missing: initial partitioning showed 12% of samples while its timer said 53% of the run. Leaf shares were
+   right; inclusive shares of outer frames were not.
+
 ## Experiment Data
 
 | exp | change | geomean vs original | verdict |
@@ -157,6 +173,11 @@ median wall-time ratios against the original. Correctness is the sha256 of every
 | 056 | degree sort on packed (degree, node) keys | A/B 1.004 | discard |
 | 057-060 | pooled stamped per-node maps (moved table, heap index), push-relabel discharge with locals | **0.4819** (total 0.4124), identical | keep |
 
+| 061-063 | counting buckets for the cluster-contraction quotient graph, flow-graph buffers reused across flow problems | **0.4769** (total 0.4077), identical | keep |
+| 062 | 24-byte flow edges with the partner's capacity (global relabeling without the partner read) | A/B 0.988, same as 061 alone | discard |
+| 065 | gpa matching: grow paths over the sorted (rating, edge) pairs | A/B no gain | discard |
+| 064-067 | two-phase push-relabel (quality rule for most-balanced cuts), node-state record, k-way neighbor prefetch | **0.4637** (total 0.3850), cut ratio 0.99944 | keep |
+| 068-070 | no phase 2 without most-balanced cuts (reversed preflow), pooled solver buffers, stamped start-node sets | identical, full run pending | candidate |
 Every kept step: 0 incorrect of 537 jobs; bit-identical steps also crosscheck OK on 864 runs, quality-rule steps passed the
 three-seed cut gate (A/A noise sd 0.0011).
 
@@ -204,6 +225,10 @@ three-seed cut gate (A/A noise sd 0.0011).
   cheap next to the label propagation that follows; the same trick did pay for the edge-rating sort earlier (2m entries).
 - **Reading per-config cut ratios from three seeds.** After 053 the eco ratio moved from 0.9998 to 1.0039; seeds 4 to 6 gave
   0.9938 and six seeds 0.9992. Per-config ratios over three seeds swing by about +-0.4%.
+- **Compacting the residual edges to give global relabeling the partner's capacity locally** (24 instead of 32 bytes, no
+  partner read per scanned edge) gained nothing on top of the other changes (A/B 0.988 either way).
+- **Small prefetches and carried-over sort keys in coarsening matching** (gpa grow loop over the sorted pairs, prefetch of
+  neighbor adjacencies in the k-way gain update) gave 0 to 0.5% each: below the 1% floor, only worth carrying as passengers.
 ## Environment
 
 C++11/GCC 13, Release with KaHIP's default flags (no flag changes allowed), single-threaded, 16-core x86 machine with one job
