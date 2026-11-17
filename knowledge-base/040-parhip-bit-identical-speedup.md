@@ -12,8 +12,8 @@ ultrafast and eco presets.
 
 ## What Worked
 
-Chained over five benchmark rounds: **0.650 of the original wall time (1.54x)**, every partition
-identical (seed 1 in every timed run, seed 2 checked separately).
+Chained over nine benchmark rounds (20 experiments): **0.624 of the original wall time (1.60x)**,
+every partition identical (seed 1 in every timed run, seed 2 checked separately after each keep).
 
 1. **Per-phase timers first, then one hypothesis per phase per run.** A small RAII timer per phase
    (io, coarsening LP, contraction, initial partitioning, projection, refinement LP, ghost exchange,
@@ -44,6 +44,39 @@ identical (seed 1 in every timed run, seed 2 checked separately).
    into flat arrays (io phase 0.76); every process still scans the file to its first line.
 7. **Projection grouping by sort.** Sorting (coarse node, fine node) pairs and grouping replaces an
    unordered_map of vectors and keeps the message and update order (project 0.91).
+8. **Stamp arrays instead of reset scans.** Two places scanned a node's edges a second time only to
+   reset per-PE "already sent" flags: `addLabel` (called on every label change of an interface node,
+   in both LP phases and in projection) and the contraction's ghost mapping. A per-PE mark that holds
+   a per-call counter (or node + 1 where each node is visited once) removes the second scan and sends
+   the same entries in the same order. `addLabel` alone: coarsen LP 0.97, ghost exchange 0.95,
+   projection 0.88, refinement 0.97, overall 0.985. Use a counter, not the node id, where the same
+   node can be processed twice.
+9. **Skip work that provably does nothing.** The global ghost update after each projection scanned
+   all local nodes; only interface nodes can have ghost neighbors (projection 0.93 total, 0.79
+   geomean). One lookup per LP edge instead of read, add and re-read (coarsen LP 0.96). Reserving the
+   local edge array at the average share 2m/p before reading (io 0.94).
+10. **Prefetch in the LP edge loop.** `__builtin_prefetch` of the target's node data eight edges
+   ahead: coarsening LP 0.95 total, up to 11% faster overall on the largest graphs, up to 4% slower on
+   small ones (net geomean 0.998). A prefetch never changes a value.
+
+### Keep rule for multi-component runs
+
+Judge each component commit by its own phase, not by the overall geomean against a fixed threshold:
+keep it if (1) its phase improves beyond that phase's run-to-run noise, (2) the overall time is not
+worse beyond noise, (3) the output is identical, and (4) the code is not disproportionately complex
+for the gain. A phase that is 5% of the run can improve by 20% and still move the overall geomean by
+only 0.3%; with a fixed overall threshold such clean wins (here: the interface-only ghost update) are
+lost. Measure the per-phase noise as the largest deviation from 1 when the same binary is measured in
+two separate runs (instrumented builds; we used four such pairs of full runs). Worst A/A deviations
+(phase total / geomean of per-job phase ratios), full set of 180 jobs:
+
+| wall | coarsen LP | ghost exchange | contraction | io | initial part. | projection | refinement LP |
+|---|---|---|---|---|---|---|---|
+| 0.2% / 0.8% | 0.2% / 0.8% | 0.5% / 1.6% | 0.2% / 0.7% | 0.1% / 0.4% | 0.9% / 1.0% | 0.2% / 0.4% | 0.2% / 1.2% |
+
+On the 29-job quick set the bands are 2 to 4 times wider (0.4% to 1.4% total, 0.9% to 3.3%
+geomean), so a screen only selects candidates and a full run decides. When two commits of one batch
+can touch the same phase, run three binaries (control, first commit, both) in one alternating run.
 
 ## Experiment Data
 
@@ -54,8 +87,13 @@ identical (seed 1 in every timed run, seed 2 checked separately).
 | 3 | ghost id open-addressing map plus binary search for the owner PE (cross-cutting) | io 0.92, comm 0.93 | 0.983 | keep |
 | 4 | small-block allocator for operator new (cross-cutting) | contract 0.96 | 0.995 (quick) | discard |
 | 5 | LP lazy size constraint; contraction flat adjacency | 0.84/0.81; 0.99 | 0.921 | keep; discard |
+| 6 | LP one map access per edge; refinement touched-entry reset | 0.96; 1.035 | 0.986 (first alone) | keep; discard |
+| 7 | packed-key degree sort; interface-only global ghost update | refine 1.14; project 0.93 | 0.998 (second alone) | discard; keep (per-component rule) |
+| 8 | reused receive buffer; reader reserve; contraction stamp | comm 0.99 (gm 1.00); io 0.94; contract 0.98 | 0.994 | discard; keep; keep |
+| 9 | addLabel stamp; LP prefetch | see 8. and 10. above | 0.985; 0.998 | keep; keep |
 
 Noise between two passes of the original: geomean drift 0.4%, per-job sd of log ratio 0.027.
+Per-phase noise: see the keep rule above.
 
 ## What Didn't Work
 
@@ -63,6 +101,13 @@ Noise between two passes of the original: geomean drift 0.4%, per-job sd of log 
   here: after the hash maps were replaced, ParHIP's allocations are mostly large vectors.
 - Turning the contraction's vector-of-vectors adjacency into a flat array changed contraction by
   only 1%; the order-defining hash maps dominate that phase.
+- Sorting nodes by degree on packed (degree << 32 | node) keys gives the same permutation (same
+  comparison results) but was slower: the per-call key vector and two copy passes cost more than the
+  cheaper comparisons (refinement 1.14x slower).
+- Resetting only the touched entries of the refinement LP's k-entry weight array (k = 64) was slower
+  (1.035) than clearing all k entries.
+- Reusing one receive buffer in the ghost exchange: no gain beyond noise; the small, short-lived
+  vectors are cheap for glibc malloc.
 - valgrind/callgrind failed (illegal instruction) on the `-march=native` build; a separate
   profiling-only build without native flags was needed.
 
