@@ -1,7 +1,5 @@
 # Improving the cut quality of a mature multilevel graph partitioner at a fixed time budget
 
-File name for the knowledge base: `037-kahip-quality-at-fixed-time-budget.md`
-
 ## Problem
 
 Improving the solution quality (edge cut) of [KaHIP](https://github.com/KaHIP/KaHIP), a mature multilevel graph partitioner, by adding a new preconfiguration `ultra` on top of the `strong` configuration. A previous AAE speed campaign had made KaHIP v3.26 about 2x faster than v3.25; the goal was to spend that saved time on better cuts. Constraints: imbalance 3% as in strong, every existing preconfiguration bit-identical to v3.26, and kaffpaE / KaBaPE (the memetic algorithms that call kaffpa as their operator) should gain too.
