@@ -115,6 +115,24 @@ bound by a random load, samples land on the instruction that consumes the load (
 loaded label), not on the load. Before building on an inline-attributed share, test it with a cheap
 change of the presumed cause.
 
+### Code layout as a confound in per-phase judgments
+
+A contraction change (038) gained 2% in its own phase and lost 3.7% in the refinement LP, whose
+code it did not touch. The coarse graphs were bit-identical (hash of every level), the slowdown was
+reproducible to 0.5% over 20 timed runs, and it came from a 16-byte move of the refinement
+function: code linked earlier in the binary had changed size. A timed padding sweep (a dummy
+function of 0, 16, 32 or 48 bytes in front of it) showed that the refinement LP is 1.18 to 1.33x
+slower on single-process k = 64 jobs (1.02 to 1.06x for k = 8) when the function starts 48 bytes
+past a 64-byte boundary, and equally fast at the other three offsets. So roughly one change in four
+draws a large false penalty (or a false gain, when it leaves the slow offset) in a phase it does not
+touch. Remedy: `__attribute__((aligned(64)))` on that one hot function, behind a macro that is
+empty on other compilers; with it all four paddings measured the same, and the change itself was
+neutral. Procedure when a phase whose code did not change moves beyond its band: compare the hot
+functions' addresses modulo 64 in both binaries (`nm`), bisect the commit, and run a padding sweep
+before judging. Untimed runs on a loaded machine are useless for this (they suggested a random,
+stack-address effect; under exclusive the effect was strictly per binary). Retesting two earlier
+refinement-side discards with the alignment fixed confirmed one of them as a real loss.
+
 ### Keep rule for multi-component runs
 
 Judge each component commit by its own phase, not by the overall geomean against a fixed threshold:
@@ -157,6 +175,9 @@ can touch the same phase, run three binaries (control, first commit, both) in on
 | 17 | node labels in their own array (cross-cutting) | coarsen 1.010, refine 1.024 | part 1.002 | discard |
 | 18 | refinement touched-entry reset; Iallreduce overlapped with the ghost receive | refine 1.140; comm 1.054 | part 1.017; 1.002 | discard; discard |
 | 19 | no allocation per ghost message; small-degree linear scan in LP | comm 0.988; coarsen 0.987 | part 0.998; 0.995 | keep; keep |
+| 20 | MADV_POPULATE_READ on the reader chunk; contraction adjacency as one array plus message swaps | io 0.991; contract 0.982 but refine 1.037 | part 1.001; 1.005 | discard; discard (layout, see above) |
+| 21 | contraction adjacency as one array without the swaps | contract 0.994 (gm 0.986) | part 1.001 | keep |
+| 22 | 64-byte alignment of the LP function; refinement touched-entry reset retested | all phases in band; refine 1.140 | part 1.000; 1.028 | keep (hygiene); discard |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
@@ -188,7 +209,8 @@ Per-phase noise: see the keep rule above.
   (coarsening 1.010, refinement 1.024). The prefetch already hides the label loads; the edge array is
   the larger stream.
 - Resetting only the touched entries of the refinement weight array, tried a second time with a
-  first-use test per access: 1.14x slower. A full reset of 8 to 64 entries is a few sequential
+  first-use test per access, and a third time with the function alignment fixed: 1.14x slower each
+  time. A full reset of 8 to 64 entries is a few sequential
   stores.
 - `MPI_Iallreduce` started before the ghost receive and completed after it: ghost exchange 1.054.
   The reduction was never the cost; the waiting is imbalance between processes, and the
@@ -196,6 +218,8 @@ Per-phase noise: see the keep rule above.
 - The wall time includes a fixed launch cost (trivial MPI program: 0.11 s at p = 1 to 0.21 s at
   p = 32), which caps the wall-time ratio of jobs that run under one second (floor 0.39 for those
   39 jobs); a program-internal timer avoids this.
+- `madvise(MADV_POPULATE_READ)` over the reader's own byte chunk of the memory-mapped file: io
+  0.991, inside the spread of the io timer between two binaries with identical reader code.
 - valgrind/callgrind failed (illegal instruction) on the `-march=native` build; a separate
   profiling-only build without native flags was needed.
 
