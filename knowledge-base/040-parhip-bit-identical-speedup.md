@@ -168,6 +168,24 @@ libopen-pal or libpmix) and classify every error by its origin stack; here all 2
 in 72 rank logs were of that kind, with 0 invalid accesses and 0 uses of uninitialised values
 originating in ParHIP allocations.
 
+### Relaxing identity to a quality budget: measure the cut noise first
+
+After 52 experiments (30 kept) the owner relaxed the identity rule: output may change if the average
+cut moves by at most 0.1% (Q = geomean over jobs of (mean cut + 1) / (master mean cut + 1) over the
+same seeds, cumulative against the original, Q <= 1.001; balance, determinism of the deterministic
+build and the interface stay fixed). Freeze the bit-identical best first (tag plus patch series) as
+its own deliverable. Then measure the cut noise before any experiment: on this benchmark, original
+seeds 1 to 5 against seeds 6 to 10 gave Q = 0.9926, and the sd of log Q over random 5/5 splits was
+0.44%, so a 0.1% budget is far below what a few seeds can resolve (uniform seeds would need about 40
+per side for SE 0.1% and 150 for 0.05%). The variance sits in a few jobs (one social graph at k = 8
+with sd 53% of the log cut at p = 1; the median job 1.3%, mesh graphs below 1%), and those jobs are
+cheap, so a Neyman allocation of seeds per job (S_j proportional to cv_j / sqrt(cost_j)) cuts the
+cost about tenfold: SE 0.05% for about 2.6 CPU-hours per candidate on 16 cores. The delta-method SE
+from 5 seeds underestimates (0.27% against 0.44% observed) because the cut distribution has heavy
+tails; validate the protocol with an A/A split of a large master reference before trusting it. Even
+the original goes over the imbalance bound on 2% of the runs (social graphs, k = 64, 16 to 32
+processes), so a balance rule must compare against the original job by job.
+
 ### Keep rule for multi-component runs
 
 Judge each component commit by its own phase, not by the overall geomean against a fixed threshold:
