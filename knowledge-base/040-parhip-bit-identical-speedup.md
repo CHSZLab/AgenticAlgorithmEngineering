@@ -14,8 +14,8 @@ only as a check.
 
 ## What Worked
 
-After 20 benchmark rounds (36 experiments, 23 kept, 12 discarded): **part time 0.629 of the original
-(1.59x), wall time about 0.56 (1.78x), IO time 0.64**, every partition identical (seed 1 in every
+After 29 benchmark rounds (49 experiments, 29 kept, 19 discarded): **part time about 0.62 of the original
+(1.61x), IO time 0.565 (1.77x)**, every partition identical (seed 1 in every
 timed run, seed 2 checked separately after each keep, from experiment 030 on also clang + libstdc++
 builds). Up to round 14 the decisions used the wall time (chained 0.609); the trajectory was later
 recomputed on part directly against the stored master medians.
@@ -104,6 +104,15 @@ recomputed on part directly against the stored master medians.
    `MPI_Waitall` instead of a heap request per Isend (ghost exchange 0.988), and a linear scan over a
    16-entry inline array instead of the hash table for nodes of degree at most 16 in the LP
    (coarsening LP 0.987; the weight per label and every tie break stay the same).
+18. **Prefetch the hash map slot of the lookups that integrate a received message.** The ghost
+   exchange, which runs inside both LPs every few hundred nodes, looks up every received global id in
+   an open-addressing ghost id map with a multiplicative hash, so each update of a large message
+   waits for a cache miss. Prefetching the slot eight updates ahead: ghost exchange 0.929 total
+   (0.966 geomean), and with it coarsening LP 0.969 and refinement LP 0.989, part 0.984 (0.980 at
+   p = 16). The same trick in the contraction's label mapping: contraction 0.986. The exchange had
+   been read as "waiting for slower processes" from a profile; part of it was this integration work.
+   A prefetch changes no result, so it is the cheapest kind of change under a bit-identity
+   constraint.
 
 ### Profiling a latency-bound loop
 
@@ -204,6 +213,12 @@ can touch the same phase, run three binaries (control, first commit, both) in on
 | 20 | MADV_POPULATE_READ on the reader chunk; contraction adjacency as one array plus message swaps | io 0.991; contract 0.982 but refine 1.037 | part 1.001; 1.005 | discard; discard (layout, see above) |
 | 21 | contraction adjacency as one array without the swaps | contract 0.994 (gm 0.986) | part 1.001 | keep |
 | 22 | 64-byte alignment of the LP function; refinement touched-entry reset retested | all phases in band; refine 1.140 | part 1.000; 1.028 | keep (hygiene); discard |
+| 23 | retest of the separate label array with the fixed alignment | coarsen gm 0.986, project 1.033 | part 1.010 total | discard |
+| 24 | edge array not zero-filled before the build (io) | io 0.848 (gm 0.871), peak RSS 1445 to 912 MB | part 0.999 | keep |
+| 25 | contraction receive buffers without fill, swap (contract); projection receive buffers without fill (project) | contract 1.002; project 0.984 (gm 0.996) | part 1.000 | discard; keep |
+| 26 | node data array not zero-filled (io, contract) | io 0.989 (noise), contract 1.006 | part 1.001 | discard |
+| 27 | degree sort on packed keys, retested with the fixed alignment | coarsen 1.004 (gm 1.013), refine in band | part 1.002 | discard (the earlier refinement loss was layout, the verdict stands) |
+| 28 | prefetch in the ghost exchange (comm); prefetch in the contraction's label mapping (contract) | comm 0.929 (gm 0.966); contract 0.986 | part 0.984; 0.997 | keep; keep |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
@@ -246,6 +261,13 @@ Per-phase noise: see the keep rule above.
   39 jobs); a program-internal timer avoids this.
 - `madvise(MADV_POPULATE_READ)` over the reader's own byte chunk of the memory-mapped file: io
   0.991, inside the spread of the io timer between two binaries with identical reader code.
+- Sorting nodes by degree on packed (degree, node) keys, retested after the layout fix: the
+  refinement loss of the first test was the layout draw, but coarsening is still 1.3% slower
+  (geomean): the key vector and two copy passes cost more than the cheaper comparisons save.
+- Not zero-filling the node data array (much smaller than the edge array): io in noise, contraction
+  1.006 (the per-node branch in the builder costs more than the fill).
+- Not zero-filling the contraction's receive buffers: contract 1.002; short-lived buffers of
+  moderate size come from already mapped pages.
 - valgrind/callgrind failed (illegal instruction) on the `-march=native` build; a separate
   profiling-only build without native flags was needed.
 
