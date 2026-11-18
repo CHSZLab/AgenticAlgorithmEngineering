@@ -12,8 +12,10 @@ ultrafast and eco presets.
 
 ## What Worked
 
-Chained over nine benchmark rounds (20 experiments): **0.624 of the original wall time (1.60x)**,
-every partition identical (seed 1 in every timed run, seed 2 checked separately after each keep).
+Chained over 14 benchmark rounds (27 experiments, 18 kept, 8 discarded): **0.609 of the original
+wall time (1.64x)**, every partition identical (seed 1 in every timed run, seed 2 checked separately
+after each keep). The campaign stopped when a fresh profile showed no hotspot above about 3% outside
+the LP loop itself and the remaining ideas were each expected inside the phase noise.
 
 1. **Per-phase timers first, then one hypothesis per phase per run.** A small RAII timer per phase
    (io, coarsening LP, contraction, initial partitioning, projection, refinement LP, ghost exchange,
@@ -58,6 +60,23 @@ every partition identical (seed 1 in every timed run, seed 2 checked separately 
 10. **Prefetch in the LP edge loop.** `__builtin_prefetch` of the target's node data eight edges
    ahead: coarsening LP 0.95 total, up to 11% faster overall on the largest graphs, up to 4% slower on
    small ones (net geomean 0.998). A prefetch never changes a value.
+11. **Devirtualize both implementations or neither.** Block weights are accessed through a virtual
+   base with one implementation for coarsening and one for refinement. Keeping a typed pointer to
+   each and calling `ptr->Concrete::getBlockSize(b)` (qualified, so non-virtual and inlinable) behind
+   one null test gave coarsen LP 0.99, refinement LP 0.98, ghost exchange 0.99, overall 0.991. A
+   first version that devirtualized only the coarsening path (typed pointer or virtual fallback) made
+   refinement 8% slower: the extra branch plus the remaining virtual call cost more than it saved.
+12. **A pool allocator for one container type, not for the program.** The contraction's hashed edge
+   map (`std::unordered_map`, iteration order defines the output) allocates one node per coarse edge.
+   A stateless allocator for this one map (single nodes from a free list in 64 KiB chunks, bucket
+   arrays from operator new) gave contraction 0.979 total and 0.944 geomean, overall 0.992, peak memory
+   slightly lower. Iteration order of `std::unordered_map` depends on hash and insertion order, not on
+   node addresses, so the output is unchanged. The global new/delete replacement of round 4 had
+   reached a similar contraction gain but was rejected as too invasive for a 4% gain in one phase;
+   the type-local form keeps the gain with one header and one typedef.
+13. **More provably-empty work.** A per-call stamp also in the global ghost update (projection 0.90
+   total, 0.94 geomean); returning early from the ghost block balance update when the label did not
+   change (ghost exchange 0.96).
 
 ### Keep rule for multi-component runs
 
@@ -91,6 +110,11 @@ can touch the same phase, run three binaries (control, first commit, both) in on
 | 7 | packed-key degree sort; interface-only global ghost update | refine 1.14; project 0.93 | 0.998 (second alone) | discard; keep (per-component rule) |
 | 8 | reused receive buffer; reader reserve; contraction stamp | comm 0.99 (gm 1.00); io 0.94; contract 0.98 | 0.994 | discard; keep; keep |
 | 9 | addLabel stamp; LP prefetch | see 8. and 10. above | 0.985; 0.998 | keep; keep |
+| 10 | std::fill to clear the refinement weight array | refine 0.994 (gm 0.987) | 1.000 (quick) | discard (inside quick noise) |
+| 11 | global ghost update stamp; skip unchanged ghost balance | project 0.90; comm 0.96 | 0.993 (both) | keep; keep |
+| 12 | newline-sentinel number parser in the reader | io 0.99 | 1.001 (quick) | discard (inside quick noise) |
+| 13 | coarsening-only devirtualization; both balance types devirtualized | refine 1.08; see 11. above | 1.007; 0.991 | discard; keep |
+| 14 | node pool allocator for the hashed coarse graph | contract 0.979 (gm 0.944) | 0.992 | keep |
 
 Noise between two passes of the original: geomean drift 0.4%, per-job sd of log ratio 0.027.
 Per-phase noise: see the keep rule above.
@@ -108,6 +132,10 @@ Per-phase noise: see the keep rule above.
   (1.035) than clearing all k entries.
 - Reusing one receive buffer in the ghost exchange: no gain beyond noise; the small, short-lived
   vectors are cheap for glibc malloc.
+- `std::fill` instead of a hand loop to clear the k-entry refinement array, and a sentinel-based
+  number parser in the reader: both inside the noise of their phase (the compiler already vectorizes
+  the loop; the reader is bound by scanning, not by digit parsing).
+- Devirtualizing only one of two implementations behind a branch (see 11.).
 - valgrind/callgrind failed (illegal instruction) on the `-march=native` build; a separate
   profiling-only build without native flags was needed.
 
