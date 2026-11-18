@@ -133,6 +133,32 @@ before judging. Untimed runs on a loaded machine are useless for this (they sugg
 stack-address effect; under exclusive the effect was strictly per binary). Retesting two earlier
 refinement-side discards with the alignment fixed confirmed one of them as a real loss.
 
+### Leaving fresh memory uninitialized, and checking it
+
+The largest io gain of the later rounds came from not zero-filling the edge array before the graph
+is built: an allocator whose default `construct` does nothing (`std::vector<Edge,
+uninitialized_allocator<Edge>>`) makes `resize` leave new trivial elements uninitialized, and the
+builder writes every entry once. io 0.848 total (0.871 geomean), peak memory 1445 to 912 MB. The
+gain is a first-touch effect: the fill touched hundreds of MB of fresh pages ahead of the parser,
+which then wrote them a second time. The same trick on short-lived, reused receive buffers gave
+nothing measurable (glibc hands back pages that are already mapped), and on the much smaller node
+array it lost more in the builder (a per-node branch) than it saved.
+
+Two pitfalls. (1) `resize` keeps old entries, and a caller can depend on that: ParHIP rebuilds a
+graph in place on top of an old one and later reads fields that the rebuild does not write. Zeroing
+"fresh" entries in the builder must therefore zero only the entries beyond the previous size; the
+first version zeroed all of them and changed the output (caught at once by the quick hash check).
+(2) Bit-identical output on one machine cannot prove that no byte is read before it is written; a
+latent read can pass here and differ elsewhere. Check with valgrind memcheck
+(`--track-origins=yes`) on a build without `-march=native` (valgrind cannot decode AVX-512), at
+p = 1 and p = 4, on social and mesh graphs, fast and deterministic eco presets. Run the p = 4 cases
+a second time over TCP (`--mca pml ob1 --mca btl tcp,self`): data that crosses process boundaries
+through shared memory is not checked, but bytes passed to `writev`/`sendto` are. Expect noise from
+the MPI library itself (uninitialised bytes in Open MPI and PMIx headers, origin in libmpi,
+libopen-pal or libpmix) and classify every error by its origin stack; here all 214 reported errors
+in 72 rank logs were of that kind, with 0 invalid accesses and 0 uses of uninitialised values
+originating in ParHIP allocations.
+
 ### Keep rule for multi-component runs
 
 Judge each component commit by its own phase, not by the overall geomean against a fixed threshold:
