@@ -5,17 +5,20 @@
 Make ParHIP, the MPI graph partitioner of KaHIP (multilevel: label propagation (LP) coarsening,
 distributed contraction, evolutionary initial partitioning on the coarsest graph, projection and LP
 refinement), faster while every partition file stays byte-identical to the original for the same
-graph, k, preset, seed and number of processes. Metric: shifted geometric mean of per-job ratios of
-the whole mpirun wall time (reading the graph and writing the partition included) over 180 jobs on
-20 graphs (social, web and mesh, 0.3M to 23M nodes), k = 8 and 64, 1 to 32 processes, fast,
-ultrafast and eco presets.
+graph, k, preset, seed and number of processes. Benchmark: 180 jobs on 20 graphs (social, web and mesh, 0.3M to
+23M nodes), k = 8 and 64, 1 to 32 processes, fast, ultrafast and eco presets. Metric up to experiment
+029: shifted geometric mean of per-job ratios of the whole mpirun wall time (reading the graph and
+writing the partition included). From experiment 030 on (owner's decision): ParHIP's own "total
+partitioning time" (part, shift 0.01 s) as primary and its IO time as second headline; the wall time
+only as a check.
 
 ## What Worked
 
-Chained over 14 benchmark rounds (27 experiments, 18 kept, 8 discarded): **0.609 of the original
-wall time (1.64x)**, every partition identical (seed 1 in every timed run, seed 2 checked separately
-after each keep). The campaign stopped when a fresh profile showed no hotspot above about 3% outside
-the LP loop itself and the remaining ideas were each expected inside the phase noise.
+After 20 benchmark rounds (36 experiments, 23 kept, 12 discarded): **part time 0.629 of the original
+(1.59x), wall time about 0.56 (1.78x), IO time 0.64**, every partition identical (seed 1 in every
+timed run, seed 2 checked separately after each keep, from experiment 030 on also clang + libstdc++
+builds). Up to round 14 the decisions used the wall time (chained 0.609); the trajectory was later
+recomputed on part directly against the stored master medians.
 
 1. **Per-phase timers first, then one hypothesis per phase per run.** A small RAII timer per phase
    (io, coarsening LP, contraction, initial partitioning, projection, refinement LP, ghost exchange,
@@ -78,6 +81,40 @@ the LP loop itself and the remaining ideas were each expected inside the phase n
    total, 0.94 geomean); returning early from the ghost block balance update when the label did not
    change (ghost exchange 0.96).
 
+14. **Reproduce the iteration order of `std::unordered_map` instead of using it.** The coarse edge
+   order is the iteration order of the contraction's hashed edge map. libstdc++ keeps one singly
+   linked list: a new key goes to the front of its bucket's run if the bucket is occupied, else to the
+   front of the list, and a rehash re-inserts the list in order with the same rule. So for an
+   insertion sequence into B buckets the order is: bucket runs by first-use time descending, each run
+   by insertion time descending, computed epoch by epoch with the container's own
+   `std::__detail::_Prime_rehash_policy` (initial bucket count 1). An open-addressing array map plus a
+   counting sort per rehash epoch gives the identical order: contraction 0.718 total (0.842 geomean),
+   overall wall 0.963 / total 0.938, part 0.956 / total 0.929. Conditions for keeping such an emulation of library
+   internals: a randomized equivalence test against the real container as a test target, a
+   compile-time guard that enables it only for library releases on which the test ran (here
+   libstdc++ 11, 13, 15 with g++ and clang++) and falls back to the container everywhere else, the
+   identity check with a second compiler, and a gain of at least about 2% overall.
+15. **Dense array for the locally owned part of a sparse key range.** Coarsening block ids are global
+   node ids; most blocks seen by a process are its own nodes' ids. A dense array for the local id
+   range in front of the hash map for the rest: coarsening LP 0.911 total (0.904 geomean).
+16. **Find the first line of a process without scanning the prefix.** Each process counts the node
+   lines starting in its own byte chunk of the file, one Allgather of the counts, and each process
+   starts at the chunk holding its first node: IO 0.919 total (0.899 geomean).
+17. **Small things that still count:** one reused receive buffer and an `MPI_Request` vector with one
+   `MPI_Waitall` instead of a heap request per Isend (ghost exchange 0.988), and a linear scan over a
+   16-entry inline array instead of the hash table for nodes of degree at most 16 in the LP
+   (coarsening LP 0.987; the weight per label and every tie break stay the same).
+
+### Profiling a latency-bound loop
+
+perf was not available; an `LD_PRELOAD` time sampler (ITIMER_PROF at 1 kHz, `backtrace`, symbolized
+afterwards with `addr2line -i`) gave per-function and per-line shares with each job weighted equally.
+It attributed 39% of the samples to the LP's hash table frames, yet replacing the table for small
+degrees gained only 1.3%, and moving the labels into their own dense array gained nothing: in a loop
+bound by a random load, samples land on the instruction that consumes the load (the hash of the
+loaded label), not on the load. Before building on an inline-attributed share, test it with a cheap
+change of the presumed cause.
+
 ### Keep rule for multi-component runs
 
 Judge each component commit by its own phase, not by the overall geomean against a fixed threshold:
@@ -115,6 +152,15 @@ can touch the same phase, run three binaries (control, first commit, both) in on
 | 12 | newline-sentinel number parser in the reader | io 0.99 | 1.001 (quick) | discard (inside quick noise) |
 | 13 | coarsening-only devirtualization; both balance types devirtualized | refine 1.08; see 11. above | 1.007; 0.991 | discard; keep |
 | 14 | node pool allocator for the hashed coarse graph | contract 0.979 (gm 0.944) | 0.992 | keep |
+| 15 | dense local block weights (coarsen LP); per-chunk line counts (io) | 0.911; 0.919 | 0.960 (both) | keep; keep |
+| 16 | array map with reproduced unordered_map order (contract); degree-sized LP table | 0.718; coarsen 0.988 (gm 1.004) | 0.963 (part 0.956); 1.006 | keep; discard |
+| 17 | node labels in their own array (cross-cutting) | coarsen 1.010, refine 1.024 | part 1.002 | discard |
+| 18 | refinement touched-entry reset; Iallreduce overlapped with the ghost receive | refine 1.140; comm 1.054 | part 1.017; 1.002 | discard; discard |
+| 19 | no allocation per ghost message; small-degree linear scan in LP | comm 0.988; coarsen 0.987 | part 0.998; 0.995 | keep; keep |
+
+From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
+0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
+between two binaries with identical reader code, so IO differences below about 2% are noise.
 
 Noise between two passes of the original: geomean drift 0.4%, per-job sd of log ratio 0.027.
 Per-phase noise: see the keep rule above.
@@ -136,6 +182,20 @@ Per-phase noise: see the keep rule above.
   number parser in the reader: both inside the noise of their phase (the compiler already vectorizes
   the loop; the reader is bound by scanning, not by digit parsing).
 - Devirtualizing only one of two implementations behind a branch (see 11.).
+- Sizing the LP neighbor table per node by its degree (power-of-two prefix of the table): coarsening
+  LP total 0.988 but geomean 1.004; the per-node sizing costs the small mesh jobs more than it saves.
+- Moving the node labels out of the 32-byte node struct into a dense array (hot/cold split): no gain
+  (coarsening 1.010, refinement 1.024). The prefetch already hides the label loads; the edge array is
+  the larger stream.
+- Resetting only the touched entries of the refinement weight array, tried a second time with a
+  first-use test per access: 1.14x slower. A full reset of 8 to 64 entries is a few sequential
+  stores.
+- `MPI_Iallreduce` started before the ghost receive and completed after it: ghost exchange 1.054.
+  The reduction was never the cost; the waiting is imbalance between processes, and the
+  non-blocking collective adds progress overhead.
+- The wall time includes a fixed launch cost (trivial MPI program: 0.11 s at p = 1 to 0.21 s at
+  p = 32), which caps the wall-time ratio of jobs that run under one second (floor 0.39 for those
+  39 jobs); a program-internal timer avoids this.
 - valgrind/callgrind failed (illegal instruction) on the `-march=native` build; a separate
   profiling-only build without native flags was needed.
 
