@@ -205,6 +205,32 @@ On the 29-job quick set the bands are 2 to 4 times wider (0.4% to 1.4% total, 0.
 geomean), so a screen only selects candidates and a full run decides. When two commits of one batch
 can touch the same phase, run three binaries (control, first commit, both) in one alternating run.
 
+### Phase 2 (0.1% quality budget): output-changing speedups
+
+Once the output may change within a cut budget, the largest single gain came from balancing the
+work per process at the finest level, not from local code changes. The per-round block-weight
+Allreduce of label propagation was about 2/3 waiting at 16 to 32 processes; a per-process counter
+showed equal node counts but up to 7.9 times the mean edge count on one process (social graphs
+stored with hubs first). Splitting the input so that each process gets about the same
+`adjacency entries + node lines * average degree` (counted per 1/1024 of each process's byte
+chunk, one Allgather) gave part 0.945 geomean (social graphs 0.87 to 0.92 at p >= 4, meshes
+neutral), ghost-exchange time 0.74, IO 0.90, and a slightly better cut (Q 0.998). Lessons:
+
+- Bytes are a biased proxy for edges: later lines hold longer node IDs, so a byte split gave the
+  first processes of a geometrically ordered mesh more work (meshes 1.04 slower). Count entries.
+- Half node, half edge balance was as fast as pure edge balance (edge max/mean 1.9 instead of 1.2)
+  and avoids processes with almost no nodes.
+- A counting pass in the reader must be branch-free (vectorized) and skipped with one process: the
+  first, branchy version cost 29% of IO at p = 1.
+- Coarsening order: visiting nodes of a degree class in node order (counting sort) is cache
+  friendly (coarsening 0.88) but sweeps mesh geometry and costs mesh cut (+0.3%); shuffling chunks
+  of 128 consecutive nodes keeps most of the speed (0.91) with neutral mesh cut. About 2/3 of that
+  gain depends on the given node numbering (randomly permuted inputs: part 0.986 instead of 0.96).
+- Quality gate that held up: Neyman-allocated seeds per job (cv of the cut over sqrt of cost), a
+  master reference with twice the seeds, Q = geomean of (cut + 1) ratios on paired seeds, A/A SE
+  0.05%; screen on a quarter of the seeds, discard above Q 1.003; balance as one-sided Fisher tests
+  of over-bound rates per job with Bonferroni, plus a pooled test.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -237,6 +263,10 @@ can touch the same phase, run three binaries (control, first commit, both) in on
 | 26 | node data array not zero-filled (io, contract) | io 0.989 (noise), contract 1.006 | part 1.001 | discard |
 | 27 | degree sort on packed keys, retested with the fixed alignment | coarsen 1.004 (gm 1.013), refine in band | part 1.002 | discard (the earlier refinement loss was layout, the verdict stands) |
 | 28 | prefetch in the ghost exchange (comm); prefetch in the contraction's label mapping (contract) | comm 0.929 (gm 0.966); contract 0.986 | part 0.984; 0.997 | keep; keep |
+| 29 | early stop of refinement LP when moves plateau (output-changing) | cut +0.2 to 0.3% | about 0.2% part per 0.01% cut | discard (late sweeps carry the cut) |
+| 30 | degree order by counting sort, then random 128-node chunks per degree class (coarsen) | coarsen 0.865 | part 0.956 | keep (Q 0.998, mesh 1.000) |
+| 31 | Iallreduce of block weights with one round lag (refine) | wait moves into MPI_Wait | part 1.00 | discard (load imbalance, not latency) |
+| 32 | input split balancing entries + node lines (io, all LP phases) | comm 0.743, io 0.896 | part 0.945 | keep (Q 0.998 vs previous) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
@@ -247,6 +277,10 @@ Per-phase noise: see the keep rule above.
 
 ## What Didn't Work
 
+- Overlapping the per-round block-weight Allreduce (Iallreduce, one round lag): the wait just
+  moved into MPI_Wait, because it is load imbalance between processes, not latency.
+- Stopping refinement label propagation early when moves plateau: the late sweeps are worth 0.2 to
+  0.3% of the cut, so the trade (0.2% time per 0.01% cut) is poor.
 - A small-block allocator replacing global new/delete (worked for sequential KaHIP) gave only 0.5%
   here: after the hash maps were replaced, ParHIP's allocations are mostly large vectors.
 - Turning the contraction's vector-of-vectors adjacency into a flat array changed contraction by
