@@ -231,6 +231,50 @@ neutral), ghost-exchange time 0.74, IO 0.90, and a slightly better cut (Q 0.998)
   0.05%; screen on a quarter of the seeds, discard above Q 1.003; balance as one-sided Fisher tests
   of over-bound rates per job with Bonferroni, plus a pooled test.
 
+### Phase 2: coarse-level rebalancing, fresh seeds, and measuring on a second host
+
+The finest-level split left the coarse levels with equal node ranges per process, so hub-heavy
+graphs got up to 2.9 times the mean edge count per process again after contraction. Four attempts:
+
+- Rebalancing every coarse level by edge cost: part 0.995 overall, youtube 0.84, but meshes 1.012
+  (p = 32 1.028). Moving coarse ranges costs locality where the split was already even.
+- Rebalancing only when the equal split puts max > 2 x mean cost, with an extra pass over the
+  coarse edges to count: on held-out graphs 0.85 to 0.97, but one graph 1.078 with identical
+  output (the pass itself).
+- Cost from fine degrees summed per bucket of coarse IDs during contraction: no extra pass, but a
+  256 KB Allreduce per level and a 64-bit division per node: output-identical p = 32 jobs 1.011.
+- Two-stage reduction: each process sums its local buckets per equal range, an Allreduce of p
+  values decides, and the full histogram is reduced only on levels that fire; power-of-two
+  buckets (shift instead of division). Output-identical p = 32 jobs 1.003, part 0.989 / 0.982,
+  unseen hub-heavy graphs 0.956 with a road-network control at 1.003. Kept.
+
+Lessons: measure the overhead on output-identical jobs with repetitions before judging gains;
+decide from a small summary and reduce the full data only when needed; graphs looked at while
+tuning stop being held-out (confirm on unseen graphs plus a control that cannot fire).
+
+Selection bias check: after four kept output-changing changes, the cumulative best and master
+were both run on seeds no earlier run had used (beyond the 2x master reference): Q 0.9939 against
+0.9953 to 0.9958 on the selection seeds, so the noise picked while selecting did not flatter the
+result. One balance flag with 3 seeds (1/3 vs 0/3) disappeared with 200 more seeds per side.
+
+A second machine (Xeon Silver 4216, same core numbering, about 1.6x slower) inflates speedups: the
+same pair of binaries gave 0.956 there and 0.989 on the main host, and the direct master ratio
+0.49 instead of 0.55. Keep one host per trajectory, report the other host's figure with its label,
+and build both sides of a timed pair on the same host (`-march=native` binaries from the other
+host are a different code generation).
+
+A byte-counting loop that gcc vectorizes is still slow with 64-bit accumulators (every flag is
+widened); 8-bit counters over blocks of 255 bytes run 2.6x faster (1.96 to 5.1 GB/s per core) with
+identical counts, and IO improved 2 to 3.5% at p >= 4.
+
+Process lessons from running unattended chains: gate every step on the command's exit status, not
+on grepping a log (a failed cmake left a chain waiting 3.5 hours), and give every wait a timeout
+that raises an alert; kill only by a looked-up process ID, never by pattern (a `pkill -f` matched
+the shell that issued it); record which MPI build each run used, and compare against master only
+from a direct rerun with the same MPI on both sides (a ratio chained through an intermediate
+binary was 0.6205 against 0.6155 direct); do no heavy work on a shared host while another user's
+exclusive job runs there, including checksums and report builds.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -267,6 +311,10 @@ neutral), ghost-exchange time 0.74, IO 0.90, and a slightly better cut (Q 0.998)
 | 30 | degree order by counting sort, then random 128-node chunks per degree class (coarsen) | coarsen 0.865 | part 0.956 | keep (Q 0.998, mesh 1.000) |
 | 31 | Iallreduce of block weights with one round lag (refine) | wait moves into MPI_Wait | part 1.00 | discard (load imbalance, not latency) |
 | 32 | input split balancing entries + node lines (io, all LP phases) | comm 0.743, io 0.896 | part 0.945 | keep (Q 0.998 vs previous) |
+| 33 | coarse PE ranges rebalanced by edge cost at every level (contract, all coarse LP) | youtube 0.84, mesh p32 1.028 | part 0.995 | discard (locality) |
+| 34 | the same, guarded by max/mean > 2 with a counting pass; then cost from fine degrees per coarse-ID bucket | identical-output jobs 1.078 (one graph); 1.011 at p32 | part 0.995 / 0.983 | discard (overhead) |
+| 35 | guarded rebalancing with a two-stage reduction and power-of-two buckets | identical-output p32 1.003; unseen 0.956 | part 0.989 | keep (Q 0.9958; fresh seeds 0.9939) |
+| 36 | 8-bit block counters in the reader's counting pass (io) | io 0.978 (p >= 4: 0.95 to 0.97 total) | part 0.998 | keep (identical output; second host) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
