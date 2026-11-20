@@ -347,6 +347,18 @@ time changed the target.
   refinement is this wait; meshes 20 to 25%. Coarsening is compute-bound (local LP plus 38% for
   integrating ghost updates). Meshes show a separate, large compute imbalance in coarsening
   (one rank 3.2 s, most others near 0) that is not yet explained.
+- Rounds of equal work instead of equal node counts: a round ends once the visited nodes'
+  degree + 1 add up to (local edges + local nodes) / rounds. In both LP phases this cut the
+  refinement wait as intended (enwiki 9.6 to 2.5 s), but cost 0.23% cut (fast presets 0.6%, one
+  job 20%): in coarsening, a process with many low-degree nodes now visits far more nodes between
+  exchanges, so the labels it sees are staler while clusters form. Applied to refinement only
+  (moves between k blocks under a bound are insensitive to one round of staleness), the cut is
+  unchanged (0.9998, held-out 0.997, unseen 0.998) and part time drops 4.3% total (refinement
+  0.79; social graphs at 16 and 32 processes 0.90). Round boundaries are part of the coarsening
+  algorithm, not only a communication schedule.
+- A branch on a loop-invariant flag in the LP node loop cost about 1% of coarsening (first
+  V-cycle, identical work, three alternating repetitions); one template instantiation per value
+  removed it. Measure such costs on the first V-cycle: later cycles see a different partition.
 
 ## Experiment Data
 
@@ -392,6 +404,8 @@ time changed the target.
 | 38 | adjacency numbers of up to 7 digits from one 8-byte load (io parse) | io 0.930 (gm) / 0.902 (total) | part 1.001 | keep (identical output; second host) |
 | 39 | contraction edge map: key and weight in a 32-byte probe slot (contract) | contract 1.023 (untimed screen, 6 jobs) | part 1.006 | discard (no timed run) |
 | 40 | coarse PE ranges decided from the exact edge copies per owner (contract) | fires on 24 vs 41 social jobs | n/a | discard (falsified by the firing table) |
+| 41 | LP rounds of equal edge work in coarsening and refinement | refine 0.56 (enwiki), cut 1.0023 | n/a | discard (quality: stale labels in coarsening) |
+| 42 | the same in refinement only, node loop instantiated per round rule | refine 0.788 total; social p16/p32 part 0.90 | part 0.957 (gm 0.974); unseen 0.938 | keep (Q 0.9998) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
