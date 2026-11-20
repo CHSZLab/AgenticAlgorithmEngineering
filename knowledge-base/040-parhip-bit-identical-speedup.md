@@ -359,6 +359,14 @@ time changed the target.
 - A branch on a loop-invariant flag in the LP node loop cost about 1% of coarsening (first
   V-cycle, identical work, three alternating repetitions); one template instantiation per value
   removed it. Measure such costs on the first V-cycle: later cycles see a different partition.
+- Count what the ghost exchange receives before tuning how it is processed. A third of the
+  coarsening updates and 96% of the refinement updates (enwiki, 16 processes) changed no label:
+  every interface label set outside label propagation (projection, V-cycle reset, initial
+  assignment) was buffered and sent in the next LP's first round, although those callers already
+  leave ghosts consistent. Recording only while the LP runs removed them with identical output;
+  part time 0.942 total (16 and 32 processes 0.95 gm, projection 0.76).
+- On one process the timed gain of dropping the work counter was 2.4% of refinement, against 11%
+  in an untimed single-core screen; in the same run, unchanged p1 coarsening moved by 3.7%.
 
 ## Experiment Data
 
@@ -406,6 +414,8 @@ time changed the target.
 | 40 | coarse PE ranges decided from the exact edge copies per owner (contract) | fires on 24 vs 41 social jobs | n/a | discard (falsified by the firing table) |
 | 41 | LP rounds of equal edge work in coarsening and refinement | refine 0.56 (enwiki), cut 1.0023 | n/a | discard (quality: stale labels in coarsening) |
 | 42 | the same in refinement only, node loop instantiated per round rule | refine 0.788 total; social p16/p32 part 0.90 | part 0.957 (gm 0.974); unseen 0.938 | keep (Q 0.9998) |
+| 43 | one process: refinement LP without the work counter | p1 refine 0.976 (gm) | p1 part 0.972 (gm, about 3% placement) | keep (identical output; timed with 44) |
+| 44 | ghost labels recorded only while LP runs (no buffered no-op updates) | project 0.76, comm 0.91, refine 0.94, coarsen 0.95 | part 0.942 (gm 0.953); unseen 0.956 | keep (identical output) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
