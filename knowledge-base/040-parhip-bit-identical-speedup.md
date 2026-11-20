@@ -275,6 +275,50 @@ from a direct rerun with the same MPI on both sides (a ratio chained through an 
 binary was 0.6205 against 0.6155 direct); do no heavy work on a shared host while another user's
 exclusive job runs there, including checksums and report builds.
 
+### Phase 3: completing nonblocking sends, rebasing, and the input graph build
+
+An audit of ParHIP's nonblocking sends (MPI 4.1: every request must be completed, and a send buffer
+must not be touched before completion) found requests that were never waited on. A PMPI wrapper
+that counts outstanding requests at `MPI_Finalize` is the reliable detector: MPICH's
+"pending references" message misses requests on duplicated communicators. Counts at p = 4 grew
+linearly with the number of partitioner calls (164 to 820 per rank for 1 to 5 calls) before the
+upstream fix, and one remaining case (the evolutionary partitioner sending a population size that
+it then changes) needed `MPI_Waitall` before the buffer is reused. An apparent hang was the eco
+preset's evolutionary time limit (2048 / p seconds), not a deadlock; use a deterministic build for
+leak tests. After each upstream merge, rebase, check partition identity of new master vs old master
+and of the rebased branch vs the branch before, keep a map of old to new commit ids next to the
+results table (its ids stay as recorded), and run one timed neutrality check.
+
+Input graph build: per-phase timers (12 phases) plus per-process counts showed that the build, not
+the parse, was the largest phase on meshes and social graphs, and that its time followed the number
+of new ghost nodes per process (delaunay_n22 p = 16: 1.25M ghosts on one process, 0.253 s, against
+89k and 0.065 s elsewhere). The cost was growth: 18 rehashes of the ghost map and doubling of three
+arrays. An exact distinct-ghost count from a bitmap over global ids (only when the bitmap is not
+larger than the local target array) and one reservation cut io by 14% in total on meshes at
+p >= 16 (delaunay_n22 0.73, social p = 32 0.90) with identical output. Two alternatives lost: the
+ghost-edge count as a bound over-reserves 4 to 14x on social graphs, and key/value slots in the
+open-addressing map (one cache line per probe) made the build 5 to 7% slower.
+
+Code layout also moves IO: on the second host, five binaries with the same reader code path at
+p = 1 gave stable, binary-specific reader times differing by up to 8% (eu-2005 0.920 to 1.000 s,
+spread within a binary about 1%); two of them differed only in communication code. The run order
+inside a pair matters too (the second run's IO is 3 to 6% faster), but alternating the order cancels
+it; layout does not cancel. Use p = 1 jobs, where a parallel-only change does not run, as the
+layout calibrator: report IO claims below about 5% net of the p = 1 band, and confirm them on the
+main host.
+
+Number parsing in the reader: once the build was cheap, the parse was about 12 ns per adjacency
+entry, dominated by the per-digit branch of the strtol-like loop (number lengths vary, so it
+mispredicts about once per number). Reading the 8 bytes at the number start (`memcpy` into a
+64-bit word), finding the run length with a branch-free byte mask and converting up to 7 digits
+with three multiplications, with everything else falling through to the old routine, made the
+parse 1.7 to 1.9x faster single-core and io 0.902 in total (social 0.89 to 0.93, p = 1 on large
+files 0.82 to 0.86) with identical output; a fuzz test against the old routine (also under
+address and undefined-behaviour sanitizers, inputs in exact-size heap buffers) guards the
+equivalence. The in-run gain at p = 16 was about half of the single-core one (shared memory
+bandwidth, page faults of the fresh target array). An earlier sentinel parser that kept the
+per-digit loop had shown nothing (round 12): the digit loop, not the scan, was the cost.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -315,6 +359,8 @@ exclusive job runs there, including checksums and report builds.
 | 34 | the same, guarded by max/mean > 2 with a counting pass; then cost from fine degrees per coarse-ID bucket | identical-output jobs 1.078 (one graph); 1.011 at p32 | part 0.995 / 0.983 | discard (overhead) |
 | 35 | guarded rebalancing with a two-stage reduction and power-of-two buckets | identical-output p32 1.003; unseen 0.956 | part 0.989 | keep (Q 0.9958; fresh seeds 0.9939) |
 | 36 | 8-bit block counters in the reader's counting pass (io) | io 0.978 (p >= 4: 0.95 to 0.97 total) | part 0.998 | keep (identical output; second host) |
+| 37 | ghost map and arrays reserved to the exact ghost count (io build) | io 0.949 (mesh p16/p32 0.86 total; net of p = 1 band about 0.92) | part 1.003 | keep (identical output; second host) |
+| 38 | adjacency numbers of up to 7 digits from one 8-byte load (io parse) | io 0.930 (gm) / 0.902 (total) | part 1.001 | keep (identical output; second host) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
