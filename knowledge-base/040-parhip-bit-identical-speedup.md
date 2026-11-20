@@ -319,6 +319,35 @@ equivalence. The in-run gain at p = 16 was about half of the single-core one (sh
 bandwidth, page faults of the fresh target array). An earlier sentinel parser that kept the
 per-digit loop had shown nothing (round 12): the digit loop, not the scan, was the cost.
 
+### Phase 3: splitting LP time into local work and waiting
+
+After the reader work, io is about 5% of the total and the part phases are the lever (coarsening LP
+197 s, refinement LP 102 s, contraction 90 s, ghost exchange 83 s inside the LP phases, over the
+180 jobs). Two contraction experiments failed on wrong premises, and a per-rank split of the LP
+time changed the target.
+
+- Contraction: per-rank sub-step timers showed that the order-preserving edge map (local build,
+  ordered iteration, the second map on the receiver) is 60 to 80% of contraction on the slowest
+  rank. Putting the key and the weight into the probe slot (one cache line per lookup instead of up
+  to four) made contraction 2.3% slower: ids are handed out in insertion order and lookups come in
+  runs of the same coarse source, so the id-indexed side arrays were already cached; the 4x larger
+  slot array and a gather pass cost more. An exact multiply-based modulo in the order computation
+  saves only 6 to 16% of that step: the order computation is bound by its random scatter.
+- Coarse rebalancing from the exact edge copies each owner receives (instead of fine degrees):
+  a firing table (one diagnostic line per contraction, every job, seed 1) showed it fires on fewer
+  levels than the fine-degree rule (24 vs 41 social jobs) and not at all on the motivating job.
+  The excess of the slowest rank was on the sending side (its hubs create 4.5x more local coarse
+  edges), which no choice of coarse ranges moves. Lesson: check the firing table, which costs
+  minutes, before redesigning a decision rule.
+- LP split (per rank: total, block-weight allreduce, probe wait, receive and integrate, Isend
+  Waitall, final barrier): refinement is imbalance-bound. On enwiki-2013 (16 PEs) 9.6 of 15.9 s
+  are the per-round block-weight allreduce, while the total compute differs by only 10% between
+  ranks: a round is a fixed number of nodes in random order, so its edge work varies with the
+  hubs it draws, and every round costs the maximum over ranks. Social and web graphs: 50 to 74% of
+  refinement is this wait; meshes 20 to 25%. Coarsening is compute-bound (local LP plus 38% for
+  integrating ghost updates). Meshes show a separate, large compute imbalance in coarsening
+  (one rank 3.2 s, most others near 0) that is not yet explained.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -361,6 +390,8 @@ per-digit loop had shown nothing (round 12): the digit loop, not the scan, was t
 | 36 | 8-bit block counters in the reader's counting pass (io) | io 0.978 (p >= 4: 0.95 to 0.97 total) | part 0.998 | keep (identical output; second host) |
 | 37 | ghost map and arrays reserved to the exact ghost count (io build) | io 0.949 (mesh p16/p32 0.86 total; net of p = 1 band about 0.92) | part 1.003 | keep (identical output; second host) |
 | 38 | adjacency numbers of up to 7 digits from one 8-byte load (io parse) | io 0.930 (gm) / 0.902 (total) | part 1.001 | keep (identical output; second host) |
+| 39 | contraction edge map: key and weight in a 32-byte probe slot (contract) | contract 1.023 (untimed screen, 6 jobs) | part 1.006 | discard (no timed run) |
+| 40 | coarse PE ranges decided from the exact edge copies per owner (contract) | fires on 24 vs 41 social jobs | n/a | discard (falsified by the firing table) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
@@ -414,6 +445,8 @@ Per-phase noise: see the keep rule above.
   1.006 (the per-node branch in the builder costs more than the fill).
 - Not zero-filling the contraction's receive buffers: contract 1.002; short-lived buffers of
   moderate size come from already mapped pages.
+- Inlining the key into the probe slots of an insertion-ordered hash map whose lookups come in
+  runs: the side arrays it replaces were cache-resident, so the 4x larger slots only cost.
 - valgrind/callgrind failed (illegal instruction) on the `-march=native` build; a separate
   profiling-only build without native flags was needed.
 
