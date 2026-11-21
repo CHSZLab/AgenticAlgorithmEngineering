@@ -367,6 +367,15 @@ time changed the target.
   part time 0.942 total (16 and 32 processes 0.95 gm, projection 0.76).
 - On one process the timed gain of dropping the work counter was 2.4% of refinement, against 11%
   in an untimed single-core screen; in the same run, unchanged p1 coarsening moved by 3.7%.
+- An allocation that lives across phases can cost an untouched phase as much as code layout: a
+  per-node list of adjacent processes, built at a graph's first label propagation and kept until
+  the graph is freed, sped up coarsening (0.94 at 16 and 32 processes) but made refinement 3.5 to
+  9% slower (timed) with identical output. Untimed variants (3 repetitions, spread under 0.4%)
+  separated the causes: moving the new code out of line did not help, while building the lists
+  without ever reading them reproduced the refinement loss (up to 11% more refinement work). The
+  mechanism is unproven (likely the address shift of everything allocated after the lists). Treat
+  any longer-lived or larger allocation, such as a bigger hash table reserve, as a footprint change
+  and measure the other phases too, not only the one it targets.
 
 ## Experiment Data
 
