@@ -414,6 +414,19 @@ time changed the target.
   moved nodes save the rescan, and in refinement few nodes move (refinement LP +18%). The diag had
   only measured the coarsening phase; when a change touches code shared by both LP phases, measure
   both.
+- Projection was mostly the global ghost label update (enwiki 3.0 of 3.1 s), and its time was
+  work, not waiting: the first message arrived at once, but each received (global id, label) pair
+  is a random lookup in the ghost hash map. The same prefetch ring as in the ghost exchange (hash
+  slot 8 pairs ahead, lookup and node data 4 ahead) cut projection from 25.1 to 16.5 s on the full
+  set, part 0.979 total, identical output.
+- A prefetch ring must be larger than its lookahead: a first diagnostic version with 4 slots at
+  distance 4 overwrote each slot before reading it, gave wrong ghost labels and crashed later in
+  refinement. Name the distances and the ring size as constants and `static_assert(lookahead <
+  ring_size)`.
+- Run the sanitizer build with libstdc++ assertions on prefetch code too: `&v[i]` for a prefetch
+  of the first edge of a node a few ahead hit `i == size` (a trailing node without edges). It is
+  harmless at run time (a prefetch never faults) but out of range; form the address as
+  `v.data() + i`. Only one graph (enwiki) and both process counts triggered it, the mesh did not.
 
 ## Experiment Data
 
@@ -468,6 +481,7 @@ time changed the target.
 | 47 | label propagation: prefetch across nodes in visiting order | coarsen 0.888, refine 0.928 | part 0.938 (gm 0.944); unseen 0.974 | keep (identical output) |
 | 47 | LP hash table prefix sized per node degree (on 47) | coarsen 0.973 | part 0.993; unseen 0.987 | not kept (inside the 1% band) |
 | 47 | moved node's adjacent processes collected in the scan (on the above) | coarsen 1.006, refine 1.183 | part 1.036; unseen 1.020 | discard |
+| 48 | global ghost label update: prefetch ring over the received pairs (project) | project 0.660 | part 0.979 (gm 0.987); unseen 0.988 | keep (identical output) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
