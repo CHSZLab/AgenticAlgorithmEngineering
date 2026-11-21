@@ -427,6 +427,20 @@ time changed the target.
   of the first edge of a node a few ahead hit `i == size` (a trailing node without edges). It is
   harmless at run time (a prefetch never faults) but out of range; form the address as
   `v.data() + i`. Only one graph (enwiki) and both process counts triggered it, the mesh did not.
+- After projection, every ghost needs the label its owner projected, which is the coarse label of
+  the ghost's coarse node; contraction had already stored that coarse node on every rank. Taking
+  the ghost labels from the projection's own request round instead of a global exchange of
+  (id, label) pairs cut projection from 16.5 to 8.5 s on the full set (part 0.979, identical
+  output; social graphs 10.6 to 3.8 s, meshes 5.9 to 4.7 s). The first version, which grouped the
+  ghosts by sorting (coarse node, ghost) pairs, was slower than the exchange: the work is per
+  ghost (7.7M per process on enwiki over all levels, about the exchanged pair volume), only the
+  message volume shrank. A small hash table of the distinct coarse nodes (one lookup per ghost,
+  no sort) made it pay. Keep a barrier at the end: the request loops count messages, not
+  senders, so without it a fast process could deliver the next level's request early when
+  refinement is skipped.
+- A diag mode that runs the old and the new path side by side and compares every field of every
+  ghost (and first checks the stored coarse node ids against the owners' with one extra
+  exchange) proves identity directly; it found 0 differences over all levels of 8 jobs.
 
 ## Experiment Data
 
@@ -482,6 +496,8 @@ time changed the target.
 | 47 | LP hash table prefix sized per node degree (on 47) | coarsen 0.973 | part 0.993; unseen 0.987 | not kept (inside the 1% band) |
 | 47 | moved node's adjacent processes collected in the scan (on the above) | coarsen 1.006, refine 1.183 | part 1.036; unseen 1.020 | discard |
 | 48 | global ghost label update: prefetch ring over the received pairs (project) | project 0.660 | part 0.979 (gm 0.987); unseen 0.988 | keep (identical output) |
+| 49 | ghost labels from the projection's request round (sort of the ghosts by coarse node) | diag: project 1.06 (enwiki), 1.75 (delaunay) | n/a | replaced by the hash version |
+| 49 | the same with a hash table of distinct coarse nodes (no sort), barrier kept | project 0.514 | part 0.979 (gm 0.981); unseen 0.980 | keep (identical output) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
