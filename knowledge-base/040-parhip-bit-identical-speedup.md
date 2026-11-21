@@ -376,6 +376,14 @@ time changed the target.
   mechanism is unproven (likely the address shift of everything allocated after the lists). Treat
   any longer-lived or larger allocation, such as a bigger hash table reserve, as a footprint change
   and measure the other phases too, not only the one it targets.
+  Follow-up: freeing the lists when the coarsening label propagation ends brought refinement back
+  on the social graphs (enwiki 1.047 to 1.010, youtube 1.052 to 1.028), and a reserve of 2 or 4
+  times the needed hash table size also slowed refinement by 1 to 8%. On the mesh (hugetrace) the
+  loss stayed, and a run-time switch that never built the lists, in the same binary, still showed
+  7% more refinement work than the base, while two diag binaries that differ by one getenv call
+  differed by 3%. So part of such a loss is a binary effect, not memory: separate the two with a
+  run-time switch in one binary before concluding footprint, and let the timed net on the full set
+  decide.
 
 ## Experiment Data
 
