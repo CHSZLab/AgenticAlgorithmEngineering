@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic Algorithm Engineering (AAE)</title>
+<meta name="description" content="Agents that optimize code like an algorithm engineer: falsifiable hypotheses, benchmarks, verified patches, and a PDF report. A skill for Claude Code and Codex.">
+<meta property="og:title" content="Agentic Algorithm Engineering (AAE)">
+<meta property="og:description" content="Agents that optimize code like an algorithm engineer: falsifiable hypotheses, benchmarks, verified patches, and a PDF report.">
+<meta property="og:image" content="https://chszlab.github.io/AgenticAlgorithmEngineering/assets/social-preview.png">
+<meta property="og:url" content="https://chszlab.github.io/AgenticAlgorithmEngineering/">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {
+    --bg: #1e222d; --panel: #262b38; --line: #373c4b; --text: #e6e8ee; --muted: #a0a5b5;
+    --red: #e64855; --blue: #3a6bb5; --green: #00a08a; --yellow: #e0b515;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+  a { color: #8fb4ee; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  header { padding: 28px 0 8px; }
+  header img { width: 100%; height: auto; display: block; border-radius: 10px; }
+  .lead { font-size: 21px; color: var(--text); margin: 28px 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+  .buttons a { display: inline-block; margin: 0 10px 10px 0; padding: 9px 18px; border-radius: 8px;
+               text-decoration: none; font-weight: 600; border: 1px solid var(--line); color: var(--text); }
+  .buttons a.primary { background: var(--red); border-color: var(--red); color: #fff; }
+  h2 { font-size: 26px; margin: 56px 0 12px; }
+  h2 .accent { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+  th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.result { font-weight: 700; color: #fff; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .cycle { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 18px; }
+  .step { background: var(--panel); border-radius: 10px; padding: 16px; border-top: 4px solid; }
+  .step h3 { margin: 0 0 6px; font-size: 17px; }
+  .step p { margin: 0; color: var(--muted); font-size: 15px; }
+  .artifacts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+  .artifact { background: var(--panel); border-radius: 10px; padding: 16px; }
+  .artifact strong { display: block; margin-bottom: 4px; }
+  .artifact span { color: var(--muted); font-size: 15px; }
+  .report { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+  .report img { width: 420px; max-width: 100%; border-radius: 6px; box-shadow: 0 4px 24px rgba(0,0,0,.45); }
+  .caption { text-align: center; color: var(--muted); font-size: 15px; margin-top: 10px; }
+  pre { background: #151821; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px;
+        overflow-x: auto; font-size: 14.5px; line-height: 1.5; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  p code, td code, li code { background: #151821; padding: 1px 5px; border-radius: 4px; font-size: 15px; }
+  .compare td:first-child { color: var(--muted); white-space: nowrap; }
+  .compare td:last-child { color: #fff; }
+  footer { margin: 64px 0 40px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+  @media (max-width: 760px) {
+    .cycle, .artifacts { grid-template-columns: 1fr 1fr; }
+    body { font-size: 16px; }
+  }
+  @media (max-width: 520px) {
+    .cycle, .artifacts { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <img src="assets/banner.svg" alt="Agentic Algorithm Engineering: the AE cycle of design, analysis, implementation and experiment around falsifiable hypotheses">
+</header>
+
+<p class="lead">Agents that optimize your code like an algorithm engineer: a falsifiable hypothesis before every experiment, correctness checked after every change, one reviewable patch per accepted change, and a PDF report of the whole session.</p>
+<p class="sub">A skill for Claude Code and Codex, from the Algorithm Engineering Group at Heidelberg University.</p>
+
+<div class="buttons">
+  <a class="primary" href="https://github.com/CHSZLab/AgenticAlgorithmEngineering">GitHub</a>
+  <a href="https://arxiv.org/abs/2609.07204">Paper</a>
+  <a href="#quick-start">Quick start</a>
+  <a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/blob/main/examples/reports/kahip_kaffpa_speed_report.pdf">Example report</a>
+</div>
+
+<h2>Results on established open-source codes</h2>
+<p class="sub">Every kept change was checked against the original output.</p>
+<div class="scroll">
+<table>
+  <tr><th>Code</th><th>Problem</th><th>Result</th><th>Correctness</th><th>Details</th></tr>
+  <tr><td><a href="https://github.com/KaHIP/VieCut">VieCut</a></td><td>exact minimum cut</td><td class="result">8.9x faster</td><td>every cut unchanged</td><td><a href="https://github.com/KaHIP/VieCut/releases/tag/v2.0">v2.0</a>, <a href="https://arxiv.org/abs/2609.07204">paper</a></td></tr>
+  <tr><td><a href="https://github.com/KaHIP/KaHIP">KaHIP</a> <code>kaffpa</code></td><td>graph partitioning</td><td class="result">3.9x faster</td><td>partition quality unchanged</td><td><a href="https://github.com/KaHIP/KaHIP/releases/tag/v3.26">v3.26</a>, <a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/blob/main/examples/reports/kahip_kaffpa_speed_report.pdf">report</a></td></tr>
+  <tr><td>KaHIP <code>ultra</code></td><td>graph partitioning quality</td><td class="result">2.2% smaller cuts</td><td>same balance rule as <code>strong</code></td><td><a href="https://github.com/KaHIP/KaHIP/releases/tag/v3.28">v3.28</a></td></tr>
+  <tr><td>Hochbaum's pseudoflow</td><td>maximum flow</td><td class="result">3.0x faster</td><td>flow value verified on 164 instances</td><td><a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/pull/8">KB 039</a></td></tr>
+  <tr><td><a href="https://github.com/KaHIP/FREIGHT">FREIGHT</a></td><td>streaming hypergraph partitioning</td><td class="result">1.82x faster</td><td>bit-identical output</td><td><a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/blob/main/knowledge-base/035-streaming-hypergraph-multipass-eval.md">KB 035</a></td></tr>
+  <tr><td><a href="https://github.com/KaHIP/KaHIP">ParHIP</a></td><td>distributed graph partitioning (MPI)</td><td class="result">1.61x faster</td><td>byte-identical partitions</td><td><a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/pull/9">KB 040</a></td></tr>
+  <tr><td><a href="https://github.com/KaHIP/ScalableCorrelationClustering">ScalableCorrelationClustering</a></td><td>correlation clustering</td><td class="result">1.24x faster</td><td>identical solution quality</td><td><a href="https://github.com/KaHIP/ScalableCorrelationClustering/releases/tag/v1.2">v1.2</a></td></tr>
+</table>
+</div>
+
+<h2>How it works: the <span class="accent">Algorithm Engineering</span> cycle</h2>
+<p>Algorithm Engineering is a cycle of design, analysis, implementation and experiment, driven by falsifiable hypotheses. AAE hands this cycle to an autonomous agent. During setup you agree with the agent on the benchmark, the metric, the correctness assertions and the budget; then it runs on its own.</p>
+<div class="cycle">
+  <div class="step" style="border-color: var(--red)"><h3>Design</h3><p>A falsifiable hypothesis: "changing X will improve the metric by roughly Z, because ..."</p></div>
+  <div class="step" style="border-color: var(--blue)"><h3>Analyze</h3><p>Predict direction and size of the effect before measuring, from profiling and analysis.</p></div>
+  <div class="step" style="border-color: var(--green)"><h3>Implement</h3><p>A minimal change, committed to Git, with the correctness assertions checked.</p></div>
+  <div class="step" style="border-color: var(--yellow)"><h3>Experiment</h3><p>Run the benchmark; keep the change only if it is better and still correct, otherwise revert.</p></div>
+</div>
+
+<h2>What you get</h2>
+<div class="artifacts">
+  <div class="artifact"><strong>Faster, still correct code</strong><span>Every change is checked against assertions you agreed on, e.g. bit-identical output.</span></div>
+  <div class="artifact"><strong>One patch per accepted change</strong><span>Numbered Git patches in <code>patches/</code>, each with its hypothesis, easy to review and apply.</span></div>
+  <div class="artifact"><strong>A PDF report</strong><span>The trajectory of the metric and one page per tested hypothesis: intuition, prediction, measurements, verdict.</span></div>
+</div>
+
+<div class="report">
+  <a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/blob/main/examples/reports/kahip_kaffpa_speed_report.pdf"><img src="assets/report-trajectory.png" alt="Report page: trajectory of the running time over all experiments"></a>
+  <a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/blob/main/examples/reports/kahip_kaffpa_speed_report.pdf"><img src="assets/report-hypothesis.png" alt="Report page: one hypothesis with prediction, measurements and verdict"></a>
+</div>
+<p class="caption">From the report of the KaHIP <code>kaffpa</code> session: 122 experiments, 69 hypotheses, 41 patches, 3.9x faster in total.</p>
+
+<h2 id="quick-start">Quick start</h2>
+<p>In Claude Code:</p>
+<pre><code>/plugin install aae --marketplace CHSZLab/AgenticAlgorithmEngineering
+/aae:aae make the solver in src/ faster on the graphs in data/</code></pre>
+<p>In Codex, install the skill with <code>scripts/install_codex_skill.py</code> and call it with <code>$aae</code>; any other agent can follow <a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/blob/main/AAE.md">AAE.md</a>. To try it first, run the <a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/tree/main/examples/quickstart">10-minute quick-start example</a>: a slow but correct shortest-path program with a benchmark and a correctness check.</p>
+
+<h2>How AAE compares</h2>
+<div class="scroll">
+<table class="compare">
+  <tr><th></th><th>autoresearch</th><th>AlphaEvolve, OpenEvolve, ShinkaEvolve</th><th>AAE</th></tr>
+  <tr><td>Works on</td><td>one training script</td><td>code blocks scored by an evaluator</td><td>any existing code base and language</td></tr>
+  <tr><td>Search</td><td>one agent, keep or discard</td><td>language-model mutations and an evolutionary population</td><td>one agent following the Algorithm Engineering cycle</td></tr>
+  <tr><td>Before each experiment</td><td>the agent's next idea</td><td>a proposed mutation</td><td>a falsifiable hypothesis with its predicted effect</td></tr>
+  <tr><td>Correctness</td><td>the metric</td><td>the evaluator score</td><td>assertions agreed with you, checked after every change</td></tr>
+  <tr><td>What you get</td><td>improved script and log</td><td>best program and population</td><td>one patch per change, a PDF report, lessons in a shared knowledge base</td></tr>
+</table>
+</div>
+
+<h2>Knowledge base</h2>
+<p>Sessions share what they learned: the <a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering/tree/main/knowledge-base">knowledge base</a> collects optimization techniques and experiment results, and agents read it before they start. Contributions from your own sessions are welcome.</p>
+
+<h2>Citation</h2>
+<p>David A. Bader, Adil Chhabra, Ernestine Großmann, Monika Henzinger, Alexander Noe, and Christian Schulz. <em>Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts.</em> <a href="https://arxiv.org/abs/2609.07204">arXiv:2609.07204</a>, 2026.</p>
+<pre><code>@misc{bader2026agenticalgorithmengineering,
+  title         = {Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts},
+  author        = {David A. Bader and Adil Chhabra and Ernestine Gro{\ss}mann and Monika Henzinger and Alexander Noe and Christian Schulz},
+  year          = {2026},
+  eprint        = {2609.07204},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  url           = {https://arxiv.org/abs/2609.07204}
+}</code></pre>
+
+<footer>
+  Christian Schulz, <a href="https://ae.ifi.uni-heidelberg.de/">Algorithm Engineering Group</a>, Heidelberg University · MIT License · <a href="https://github.com/CHSZLab/AgenticAlgorithmEngineering">github.com/CHSZLab/AgenticAlgorithmEngineering</a>
+</footer>
+
+</div>
+</body>
+</html>
