@@ -399,6 +399,21 @@ time changed the target.
   and per-rank stderr when a run fails; a rerun loop without them only shows that it is rare.
 - UndefinedBehaviorSanitizer stops at an upstream line (uncoarsening.cpp binds a reference to a
   null complete_boundary) before reaching ParHIP's own code; suppress that line to get further.
+- Split the label propagation node loop by degree class before guessing: per edge about 90 to 140
+  cycles, and the short linear-search path (degree up to 16) cost more per edge than the hash
+  path, so the cost was not the hash table but the first misses of every node (its record, first
+  edges, own data and first target labels; the in-node prefetch 8 edges ahead never covers short
+  nodes). Prefetching these a few nodes ahead in the visiting order (record 4, first edge line 2,
+  data and up to 8 first targets 1 ahead) cut coarsening LP by 11% (178 to 158 s) and refinement
+  LP by 7% on the full set, part 0.938 total, identical output. The untimed diag gain (13% over 8
+  jobs) carried over; trust such a diag over a guess.
+- Sizing the hash table prefix per node (pow2 >= 2 * degree instead of 2 * max degree, 8 MiB for
+  enwiki) gave 2.7% of coarsening LP but only 0.7% of part time: inside the 1% band, not kept.
+- Collecting a moved node's adjacent processes during the scan (a bitmask) to skip the send
+  rescan lost 3.6%: every ghost edge of every interface node pays the process lookup, but only
+  moved nodes save the rescan, and in refinement few nodes move (refinement LP +18%). The diag had
+  only measured the coarsening phase; when a change touches code shared by both LP phases, measure
+  both.
 
 ## Experiment Data
 
@@ -450,6 +465,9 @@ time changed the target.
 | 44 | ghost labels recorded only while LP runs (no buffered no-op updates) | project 0.76, comm 0.91, refine 0.94, coarsen 0.95 | part 0.942 (gm 0.953); unseen 0.956 | keep (identical output) |
 | 45 | per-node list of adjacent processes for the ghost label sends (lists freed after coarsening) | coarsen 0.96, refine 1.03 (lists kept) | not timed as the freed variant | parked (one unexplained crash and hang in an identity batch) |
 | 46 | coarsening block weight map: prefetch ring over incoming ghost updates | coarsen 0.946, comm 0.855, refine 0.997 | part 0.976 (gm 0.984); unseen 0.986 | keep (identical output) |
+| 47 | label propagation: prefetch across nodes in visiting order | coarsen 0.888, refine 0.928 | part 0.938 (gm 0.944); unseen 0.974 | keep (identical output) |
+| 47 | LP hash table prefix sized per node degree (on 47) | coarsen 0.973 | part 0.993; unseen 0.987 | not kept (inside the 1% band) |
+| 47 | moved node's adjacent processes collected in the scan (on the above) | coarsen 1.006, refine 1.183 | part 1.036; unseen 1.020 | discard |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
