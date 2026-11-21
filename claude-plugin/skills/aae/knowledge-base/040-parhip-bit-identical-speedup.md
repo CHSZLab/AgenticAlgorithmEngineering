@@ -380,7 +380,7 @@ time changed the target.
   on the social graphs (enwiki 1.047 to 1.010, youtube 1.052 to 1.028), and a reserve of 2 or 4
   times the needed hash table size also slowed refinement by 1 to 8%. On the mesh (hugetrace) the
   loss stayed, and a run-time switch that never built the lists, in the same binary, still showed
-  7% more refinement work than the base, while two diag binaries that differ by one getenv call
+  7% more refinement work than the base, while two diag binaries that differ by one environment-variable lookup
   differed by 3%. So part of such a loss is a binary effect, not memory: separate the two with a
   run-time switch in one binary before concluding footprint, and let the timed net on the full set
   decide.
