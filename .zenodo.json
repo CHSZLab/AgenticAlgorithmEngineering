@@ -1,0 +1,14 @@
+{
+  "upload_type": "software",
+  "title": "Agentic Algorithm Engineering",
+  "description": "Agentic Algorithm Engineering (AAE) is a skill for coding agents such as Claude Code and Codex that runs the algorithm engineering cycle (design, implement, experiment, analyze) autonomously on a code base and documents every step in a report.",
+  "creators": [
+    {"name": "Schulz, Christian", "affiliation": "Heidelberg University"}
+  ],
+  "license": "MIT",
+  "keywords": ["algorithm engineering", "AI agents", "performance engineering", "Claude Code", "Codex"],
+  "related_identifiers": [
+    {"identifier": "arXiv:2609.07204", "relation": "isDocumentedBy", "resource_type": "publication-preprint"},
+    {"identifier": "https://github.com/CHSZLab/AgenticAlgorithmEngineering", "relation": "isSupplementTo", "scheme": "url"}
+  ]
+}
