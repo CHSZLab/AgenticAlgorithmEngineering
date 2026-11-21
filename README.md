@@ -16,6 +16,23 @@ Algorithm Engineering, as defined by [Sanders (2009)](https://doi.org/10.1007/97
 
 Agentic Algorithm Engineering takes this methodology and hands the cycle to an autonomous AI agent. The agent formulates hypotheses, implements changes, runs experiments, and evaluates results, iterating continuously without human intervention. This allows systematic, high-throughput exploration of the optimization space while maintaining the scientific rigor of the AE methodology.
 
+## How AAE Compares
+
+AAE belongs to a family of tools in which AI agents improve code by running experiments. They differ in what they work on and in what you get at the end.
+
+[autoresearch](https://github.com/karpathy/autoresearch) lets an agent edit one training script for a small language model, train for five minutes, and keep the change if the validation loss improved. AAE uses the same keep-or-discard loop, but on any existing code base, in any language and for any metric, and it adds the parts of the Algorithm Engineering method that make the results trustworthy and reusable: a falsifiable hypothesis with a predicted effect before every experiment, correctness assertions checked after every change, one reviewable patch per accepted change, and a report.
+
+[AlphaEvolve](https://arxiv.org/abs/2506.13131), [OpenEvolve](https://github.com/algorithmicsuperintelligence/openevolve) and [ShinkaEvolve](https://github.com/SakanaAI/ShinkaEvolve) evolve a population of program variants: a language model proposes mutations, an evaluator scores every variant, and evolutionary search keeps the best. They are strong at discovering new algorithms and heuristics for problems that can be scored automatically, and they evaluate many candidates. AAE instead works like an engineer on an existing code base: fewer, deliberate experiments, each one motivated by profiling and analysis, with the output kept correct throughout. The approaches are complementary.
+
+| | autoresearch | OpenEvolve, ShinkaEvolve | AAE |
+|---|---|---|---|
+| Works on | one training script | code blocks scored by an evaluator | any existing code base and language |
+| Search | one agent, keep or discard | language-model mutations plus an evolutionary population | one agent following the Algorithm Engineering cycle |
+| Before each experiment | the agent's next idea | a proposed mutation | a falsifiable hypothesis with its predicted effect |
+| Correctness | the metric (validation loss) | the evaluator score | assertions agreed with you, checked after every change (e.g. bit-identical output) |
+| What you get | improved script and experiment log | best program and population | one Git patch per accepted change, a PDF report with one page per hypothesis, and lessons in a shared knowledge base |
+| How it runs | an agent prompted with `program.md` | a Python framework calling language models | a skill or plugin in Claude Code or Codex |
+
 ## Knowledge Base
 
 <p align="center">
