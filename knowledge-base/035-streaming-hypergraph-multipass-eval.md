@@ -2,7 +2,7 @@
 
 ## Problem
 
-Optimizing the multi-pass streaming hypergraph partitioning in [FREIGHT](https://github.com/freelancer/FREIGHT) via its pybind11 binding. FREIGHT uses a streaming algorithm where nodes are processed one-by-one and assigned to partition blocks. Multi-pass restreaming re-evaluates the partition after each pass and keeps the best. The metric was geometric mean of wall-clock time across 96 configurations (4 ISPD98 instances, 3 k values, 4 pass counts, 2 objectives), with a hard constraint that results must remain bit-identical to the FREIGHT CLI. The baseline geometric mean was 82.9ms.
+Optimizing the multi-pass streaming hypergraph partitioning in [FREIGHT](https://github.com/KaHIP/FREIGHT) via its pybind11 binding. FREIGHT uses a streaming algorithm where nodes are processed one-by-one and assigned to partition blocks. Multi-pass restreaming re-evaluates the partition after each pass and keeps the best. The metric was geometric mean of wall-clock time across 96 configurations (4 ISPD98 instances, 3 k values, 4 pass counts, 2 objectives), with a hard constraint that results must remain bit-identical to the FREIGHT CLI. The baseline geometric mean was 82.9ms.
 
 The bottleneck was the inter-pass evaluation: after each pass, the code needed to compute how many hyperedges (nets) span multiple partition blocks. The original implementation built a reverse mapping (`vector<vector<int64_t>>` net-to-nodes, O(total_pins) with many small vector allocations) and then created a `std::set<PartitionID>` for each net to count distinct blocks. For large hypergraphs (200K+ nets, 800K+ pins), this meant millions of heap allocations per pass.
 
