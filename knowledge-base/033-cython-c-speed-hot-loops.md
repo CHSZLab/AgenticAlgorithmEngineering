@@ -69,4 +69,4 @@ setup(ext_modules=cythonize("distance.pyx"), include_dirs=[np.get_include()])
 
 ## Environment
 
-Python 3.8+, Cython 3.0+, NumPy. Requires a C compiler (GCC/Clang/MSVC). `pip install cython`. Build with `python setup.py build_ext --inplace` or use `pyximport` for development.
+Python 3.8+, Cython 3.0+, NumPy. Requires a C compiler (GCC/Clang/MSVC). Install Cython as described in its documentation. Build with `python setup.py build_ext --inplace` or use `pyximport` for development.

@@ -1,0 +1,17 @@
+name: Claude plugin directory edition
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: claude-plugin/ matches AAE.md, the knowledge base and the report template
+        run: python3 scripts/build_claude_plugin.py --check
+      - name: no symbolic links in claude-plugin/
+        run: test -z "$(find claude-plugin -type l)"

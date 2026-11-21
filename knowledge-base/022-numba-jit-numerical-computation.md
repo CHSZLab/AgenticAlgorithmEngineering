@@ -75,4 +75,4 @@ def monte_carlo_parallel(n, arr):
 
 ## Environment
 
-Python 3.11, Numba 0.58, NumPy 1.25. Numba requires LLVM (bundled via `llvmlite`). AMD Ryzen 9 5900X (12 cores). `pip install numba`.
+Python 3.11, Numba 0.58, NumPy 1.25. Numba requires LLVM (bundled via `llvmlite`). AMD Ryzen 9 5900X (12 cores). Install Numba as described in its documentation.

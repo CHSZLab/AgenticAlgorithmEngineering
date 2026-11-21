@@ -1,0 +1,20 @@
+{
+  "name": "aae",
+  "displayName": "Agentic Algorithm Engineering",
+  "version": "1.12.0",
+  "description": "Agentic Algorithm Engineering: autonomous performance tuning through falsifiable hypotheses, benchmarks, numbered patches, and a PDF report.",
+  "author": {
+    "name": "Christian Schulz"
+  },
+  "homepage": "https://chszlab.github.io/AgenticAlgorithmEngineering/",
+  "repository": "https://github.com/CHSZLab/AgenticAlgorithmEngineering",
+  "license": "MIT",
+  "icon": ".claude-plugin/icon.png",
+  "keywords": [
+    "performance",
+    "optimization",
+    "algorithm engineering",
+    "benchmarking",
+    "profiling"
+  ]
+}
