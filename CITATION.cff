@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "If you use Agentic Algorithm Engineering in your research, please cite the paper below."
+title: "Agentic Algorithm Engineering"
+type: software
+authors:
+  - family-names: Schulz
+    given-names: Christian
+    affiliation: Heidelberg University
+repository-code: "https://github.com/CHSZLab/AgenticAlgorithmEngineering"
+license: MIT
+version: "1.11"
+date-released: "2026-11-10"
+keywords:
+  - algorithm engineering
+  - AI agents
+  - performance engineering
+  - Claude Code
+  - Codex
+preferred-citation:
+  type: article
+  title: "Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts"
+  authors:
+    - family-names: Bader
+      given-names: David A.
+    - family-names: Chhabra
+      given-names: Adil
+    - family-names: Großmann
+      given-names: Ernestine
+    - family-names: Henzinger
+      given-names: Monika
+    - family-names: Noe
+      given-names: Alexander
+    - family-names: Schulz
+      given-names: Christian
+  year: 2026
+  journal: "arXiv preprint"
+  identifiers:
+    - type: other
+      value: "arXiv:2609.07204"
+  url: "https://arxiv.org/abs/2609.07204"
