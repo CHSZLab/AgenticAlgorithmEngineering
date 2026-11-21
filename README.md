@@ -10,7 +10,7 @@ See [AAE.md](AAE.md) for the full program definition. Besides the optimized code
 
 The methodology is described in the paper [Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts](https://arxiv.org/abs/2609.07204), which applies AAE to the shared-memory exact minimum cut solver [VieCut](https://github.com/VieCut/VieCut). See [Citation](#citation) below if you use AAE in your work.
 
-## Results
+## Example Results
 
 AAE sessions on established open-source codes. Every kept change was checked against the original output.
 
