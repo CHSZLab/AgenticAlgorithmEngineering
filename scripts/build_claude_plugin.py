@@ -42,6 +42,8 @@ PLUGIN_JSON = {
     "homepage": "https://chszlab.github.io/AgenticAlgorithmEngineering/",
     "documentationUrl": "https://github.com/CHSZLab/AgenticAlgorithmEngineering#readme",
     "termsOfServiceUrl": "https://github.com/CHSZLab/AgenticAlgorithmEngineering/blob/main/LICENSE",
+    "privacyPolicyUrl": "https://github.com/CHSZLab/AgenticAlgorithmEngineering/blob/main/PRIVACY.md",
+    "supportUrl": "https://github.com/CHSZLab/AgenticAlgorithmEngineering/discussions",
     "repository": "https://github.com/CHSZLab/AgenticAlgorithmEngineering",
     "license": "MIT",
     "icon": ".claude-plugin/icon.png",
