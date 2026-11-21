@@ -17,7 +17,7 @@ keywords:
   - Claude Code
   - Codex
 preferred-citation:
-  type: article
+  type: conference-paper
   title: "Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts"
   authors:
     - family-names: Bader
@@ -32,8 +32,15 @@ preferred-citation:
       given-names: Alexander
     - family-names: Schulz
       given-names: Christian
-  year: 2026
-  journal: "arXiv preprint"
+  collection-title: "13th DIMACS Implementation Challenge Workshop: Network Flows 2.0, OASIcs"
+  collection-type: proceedings
+  conference:
+    name: "13th DIMACS Implementation Challenge Workshop: Network Flows 2.0"
+  publisher:
+    name: "Schloss Dagstuhl -- Leibniz-Zentrum für Informatik"
+  year: 2027
+  status: in-press
+  notes: "To appear"
   identifiers:
     - type: other
       value: "arXiv:2609.07204"

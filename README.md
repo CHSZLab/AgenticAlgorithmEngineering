@@ -8,7 +8,7 @@ This repository contains the program definition for **Agentic Algorithm Engineer
 
 See [AAE.md](AAE.md) for the full program definition. Besides the optimized code, every AAE session produces two artifacts: one numbered patch per accepted change in `patches/`, and a PDF report in `report/` with the trajectory of the metric and one page per tested hypothesis (intuition, prediction, code change, measurements, verdict).
 
-The methodology is described in the paper [Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts](https://arxiv.org/abs/2609.07204), which applies AAE to the shared-memory exact minimum cut solver [VieCut](https://github.com/VieCut/VieCut). See [Citation](#citation) below if you use AAE in your work.
+The methodology is described in the paper [Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts](https://arxiv.org/abs/2609.07204) (13th DIMACS Implementation Challenge, to appear), which applies AAE to the shared-memory exact minimum cut solver [VieCut](https://github.com/VieCut/VieCut). See [Citation](#citation) below if you use AAE in your work.
 
 ## Example Results
 
@@ -231,16 +231,19 @@ This sends "continue the AAE loop" every 30 minutes. If the agent is still runni
 
 If you use Agentic Algorithm Engineering in your research, please cite the following paper:
 
-> David A. Bader, Adil Chhabra, Ernestine Großmann, Monika Henzinger, Alexander Noe, and Christian Schulz. *Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts*. arXiv:2609.07204, 2026. https://arxiv.org/abs/2609.07204
+> David A. Bader, Adil Chhabra, Ernestine Großmann, Monika Henzinger, Alexander Noe, and Christian Schulz. *Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts*. In 13th DIMACS Implementation Challenge Workshop: Network Flows 2.0, OASIcs, 2027. To appear. Preprint: https://arxiv.org/abs/2609.07204
 
 ```bibtex
-@misc{bader2026agenticalgorithmengineering,
+@inproceedings{bader2027agenticalgorithmengineering,
   title         = {Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts},
   author        = {David A. Bader and Adil Chhabra and Ernestine Gro{\ss}mann and Monika Henzinger and Alexander Noe and Christian Schulz},
-  year          = {2026},
+  booktitle     = {13th DIMACS Implementation Challenge Workshop: Network Flows 2.0},
+  series        = {OASIcs},
+  publisher     = {Schloss Dagstuhl -- Leibniz-Zentrum f{\"u}r Informatik},
+  year          = {2027},
+  note          = {To appear},
   eprint        = {2609.07204},
   archivePrefix = {arXiv},
-  primaryClass  = {cs.AI},
   url           = {https://arxiv.org/abs/2609.07204}
 }
 ```
