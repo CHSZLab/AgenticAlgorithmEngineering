@@ -384,6 +384,21 @@ time changed the target.
   differed by 3%. So part of such a loss is a binary effect, not memory: separate the two with a
   run-time switch in one binary before concluding footprint, and let the timed net on the full set
   decide.
+- Split a hot spot before optimizing it: of the ghost update integration in coarsening, 96% was
+  the block weight hash map (random keys: the labels of the updates), not the label stores. A
+  software prefetch ring over the incoming message (ghost id slot 8 updates ahead, ghost lookup,
+  node data and the new label's weight slot 4 ahead, the old label's slot 2 ahead) cut that loop
+  from 3.7 to 2.8 s on the critical rank, with identical output; part time 0.976 total on the
+  full set (16 processes 0.964, coarsening LP 0.946, refinement unchanged: no new allocation).
+  Reserving the map to its final size instead lost (doubling the zeroing, refinement up to 8%).
+- An optimization that crashed once in a deterministic build and then never again was parked, not
+  called a flake: per-node lists of adjacent processes (about 1% net) segfaulted on one 4-process
+  job and hung another in one packed, oversubscribed identity batch; 6 plain repeats, sanitizer
+  (address, undefined, libstdc++ assertions, an explicit range check on the list path), valgrind
+  and three reruns of the batch all passed, and so did the base. Keep the failing batch, core dumps
+  and per-rank stderr when a run fails; a rerun loop without them only shows that it is rare.
+- UndefinedBehaviorSanitizer stops at an upstream line (uncoarsening.cpp binds a reference to a
+  null complete_boundary) before reaching ParHIP's own code; suppress that line to get further.
 
 ## Experiment Data
 
@@ -433,6 +448,8 @@ time changed the target.
 | 42 | the same in refinement only, node loop instantiated per round rule | refine 0.788 total; social p16/p32 part 0.90 | part 0.957 (gm 0.974); unseen 0.938 | keep (Q 0.9998) |
 | 43 | one process: refinement LP without the work counter | p1 refine 0.976 (gm) | p1 part 0.972 (gm, about 3% placement) | keep (identical output; timed with 44) |
 | 44 | ghost labels recorded only while LP runs (no buffered no-op updates) | project 0.76, comm 0.91, refine 0.94, coarsen 0.95 | part 0.942 (gm 0.953); unseen 0.956 | keep (identical output) |
+| 45 | per-node list of adjacent processes for the ghost label sends (lists freed after coarsening) | coarsen 0.96, refine 1.03 (lists kept) | not timed as the freed variant | parked (one unexplained crash and hang in an identity batch) |
+| 46 | coarsening block weight map: prefetch ring over incoming ghost updates | coarsen 0.946, comm 0.855, refine 0.997 | part 0.976 (gm 0.984); unseen 0.986 | keep (identical output) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
