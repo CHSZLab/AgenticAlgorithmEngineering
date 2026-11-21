@@ -255,3 +255,5 @@ Christian Schulz, [Algorithm Engineering Group](https://ae.ifi.uni-heidelberg.de
 ## Contributing
 
 We welcome contributions! Feel free to open a pull request if you have improvements, extensions, or new ideas.
+
+Questions, results from your own AAE sessions, and ideas are welcome in [Discussions](https://github.com/CHSZLab/AgenticAlgorithmEngineering/discussions); share your results under *Show and tell*.
