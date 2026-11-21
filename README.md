@@ -31,11 +31,10 @@ Each session also produced a PDF report with one page per tested hypothesis, and
 The full report of the KaHIP `kaffpa` session: 122 experiments, 69 hypotheses (41 kept, 28 discarded), 41 patches, 3.9x faster in total with every partition checked ([PDF, 90 pages](examples/reports/kahip_kaffpa_speed_report.pdf)).
 
 <p align="center">
-  <a href="examples/reports/kahip_kaffpa_speed_report.pdf"><img src="img/report-summary.png" alt="Report: summary page" width="280"/></a>
-  <a href="examples/reports/kahip_kaffpa_speed_report.pdf"><img src="img/report-trajectory.png" alt="Report: trajectory of the running time" width="280"/></a>
-  <a href="examples/reports/kahip_kaffpa_speed_report.pdf"><img src="img/report-hypothesis.png" alt="Report: one page per hypothesis" width="280"/></a>
+  <a href="examples/reports/kahip_kaffpa_speed_report.pdf"><img src="img/report-trajectory.png" alt="Report: trajectory of the running time" width="400"/></a>
+  <a href="examples/reports/kahip_kaffpa_speed_report.pdf"><img src="img/report-hypothesis.png" alt="Report: one page per hypothesis" width="400"/></a>
 </p>
-<p align="center"><em>Summary, trajectory of the running time over all experiments, and one of the pages per hypothesis (hypothesis, prediction, measurements, verdict, code change)</em></p>
+<p align="center"><em>Trajectory of the running time over all experiments, and one of the pages per hypothesis (hypothesis, prediction, measurements, verdict, code change)</em></p>
 
 ## Quick Start
 
