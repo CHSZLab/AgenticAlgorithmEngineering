@@ -107,6 +107,8 @@ To update, pull this checkout and install into a new destination, or move the ex
 
 ## Usage
 
+To try AAE before using it on your own code, run the 10-minute [quick-start example](examples/quickstart/): a slow but correct shortest-path program with a benchmark and a correctness check.
+
 Agree on the target, benchmark, correctness assertions, and run budget during setup, then let the agent execute the AE cycle within its configured permissions. Codex supports bounded sessions and checkpoints; see [Codex sessions](AAE.md#codex-sessions). An open-ended session runs until interrupted, subject to the host's execution limits. The Claude Code orchestration options below apply to Claude Code only.
 
 ### Multi-component AAE
