@@ -40,6 +40,8 @@ PLUGIN_JSON = {
                    "hypotheses, benchmarks, numbered patches, and a PDF report.",
     "author": {"name": "Christian Schulz"},
     "homepage": "https://chszlab.github.io/AgenticAlgorithmEngineering/",
+    "documentationUrl": "https://github.com/CHSZLab/AgenticAlgorithmEngineering#readme",
+    "termsOfServiceUrl": "https://github.com/CHSZLab/AgenticAlgorithmEngineering/blob/main/LICENSE",
     "repository": "https://github.com/CHSZLab/AgenticAlgorithmEngineering",
     "license": "MIT",
     "icon": ".claude-plugin/icon.png",
