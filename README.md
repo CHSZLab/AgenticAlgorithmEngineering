@@ -17,7 +17,7 @@ AAE sessions on established open-source codes. Every kept change was checked aga
 | Code | Problem | Result | Correctness | Details |
 |---|---|---|---|---|
 | [VieCut](https://github.com/KaHIP/VieCut) | exact minimum cut | **8.9x faster** on 1 thread, 8.8x on 32 threads; no longer runs out of memory on large-cut graphs | every cut unchanged | [v2.0](https://github.com/KaHIP/VieCut/releases/tag/v2.0), [paper](https://arxiv.org/abs/2609.07204) |
-| [KaHIP](https://github.com/KaHIP/KaHIP) `kaffpa` | graph partitioning | **3.9x faster** in total time (2.8x geometric mean over 537 runs) | partition quality unchanged | [v3.26](https://github.com/KaHIP/KaHIP/releases/tag/v3.26) |
+| [KaHIP](https://github.com/KaHIP/KaHIP) `kaffpa` | graph partitioning | **3.9x faster** in total time (2.8x geometric mean over 537 runs) | partition quality unchanged | [v3.26](https://github.com/KaHIP/KaHIP/releases/tag/v3.26), [report](examples/reports/kahip_kaffpa_speed_report.pdf) |
 | KaHIP `ultra` | graph partitioning quality | **2.2% smaller cuts** than `strong` (about 7% on social graphs), in less time than `strong` of v3.25 | same balance rule as `strong` | [v3.28](https://github.com/KaHIP/KaHIP/releases/tag/v3.28), [ultra.pdf](https://github.com/KaHIP/KaHIP/blob/master/manual/ultra.pdf) |
 | Hochbaum's pseudoflow | maximum flow | **3.0x faster** in total (3.18x geometric mean over 164 DIMACS instances) | flow value verified on every instance | [KB 039](https://github.com/CHSZLab/AgenticAlgorithmEngineering/pull/8) |
 | [FREIGHT](https://github.com/KaHIP/FREIGHT) | streaming hypergraph partitioning | **1.82x faster** | bit-identical output | [KB 035](knowledge-base/035-streaming-hypergraph-multipass-eval.md) |
@@ -25,6 +25,17 @@ AAE sessions on established open-source codes. Every kept change was checked aga
 | [ScalableCorrelationClustering](https://github.com/KaHIP/ScalableCorrelationClustering) | correlation clustering | **1.24x faster** | identical solution quality | [v1.2](https://github.com/KaHIP/ScalableCorrelationClustering/releases/tag/v1.2), [KB 034](knowledge-base/034-graph-clustering-lp-refinement.md) |
 
 Each session also produced a PDF report with one page per tested hypothesis, and its lessons went into the [knowledge base](knowledge-base/).
+
+### Example Report
+
+The full report of the KaHIP `kaffpa` session: 122 experiments, 69 hypotheses (41 kept, 28 discarded), 41 patches, 3.9x faster in total with every partition checked ([PDF, 90 pages](examples/reports/kahip_kaffpa_speed_report.pdf)).
+
+<p align="center">
+  <a href="examples/reports/kahip_kaffpa_speed_report.pdf"><img src="img/report-summary.png" alt="Report: summary page" width="280"/></a>
+  <a href="examples/reports/kahip_kaffpa_speed_report.pdf"><img src="img/report-trajectory.png" alt="Report: trajectory of the running time" width="280"/></a>
+  <a href="examples/reports/kahip_kaffpa_speed_report.pdf"><img src="img/report-hypothesis.png" alt="Report: one page per hypothesis" width="280"/></a>
+</p>
+<p align="center"><em>Summary, trajectory of the running time over all experiments, and one of the pages per hypothesis (hypothesis, prediction, measurements, verdict, code change)</em></p>
 
 ## Quick Start
 
