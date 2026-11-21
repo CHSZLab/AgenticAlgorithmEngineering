@@ -10,6 +10,33 @@ See [AAE.md](AAE.md) for the full program definition. Besides the optimized code
 
 The methodology is described in the paper [Agentic Algorithm Engineering: Improving Shared-Memory Exact Minimum Cuts](https://arxiv.org/abs/2609.07204), which applies AAE to the shared-memory exact minimum cut solver [VieCut](https://github.com/VieCut/VieCut). See [Citation](#citation) below if you use AAE in your work.
 
+## Results
+
+AAE sessions on established open-source codes. Every kept change was checked against the original output.
+
+| Code | Problem | Result | Correctness | Details |
+|---|---|---|---|---|
+| [VieCut](https://github.com/KaHIP/VieCut) | exact minimum cut | **8.9x faster** on 1 thread, 8.8x on 32 threads; no longer runs out of memory on large-cut graphs | every cut unchanged | [v2.0](https://github.com/KaHIP/VieCut/releases/tag/v2.0), [paper](https://arxiv.org/abs/2609.07204) |
+| [KaHIP](https://github.com/KaHIP/KaHIP) `kaffpa` | graph partitioning | **3.9x faster** in total time (2.8x geometric mean over 537 runs) | partition quality unchanged | [v3.26](https://github.com/KaHIP/KaHIP/releases/tag/v3.26) |
+| KaHIP `ultra` | graph partitioning quality | **2.2% smaller cuts** than `strong` (about 7% on social graphs), in less time than `strong` of v3.25 | same balance rule as `strong` | [v3.28](https://github.com/KaHIP/KaHIP/releases/tag/v3.28), [ultra.pdf](https://github.com/KaHIP/KaHIP/blob/master/manual/ultra.pdf) |
+| Hochbaum's pseudoflow | maximum flow | **3.0x faster** in total (3.18x geometric mean over 164 DIMACS instances) | flow value verified on every instance | [KB 039](https://github.com/CHSZLab/AgenticAlgorithmEngineering/pull/8) |
+| [FREIGHT](https://github.com/KaHIP/FREIGHT) | streaming hypergraph partitioning | **1.82x faster** | bit-identical output | [KB 035](knowledge-base/035-streaming-hypergraph-multipass-eval.md) |
+| [ParHIP](https://github.com/KaHIP/KaHIP) | distributed graph partitioning (MPI) | **1.61x faster** partitioning, 1.77x faster I/O (session ongoing) | byte-identical partitions | [KB 040](https://github.com/CHSZLab/AgenticAlgorithmEngineering/pull/9) |
+| [ScalableCorrelationClustering](https://github.com/KaHIP/ScalableCorrelationClustering) | correlation clustering | **1.24x faster** | identical solution quality | [v1.2](https://github.com/KaHIP/ScalableCorrelationClustering/releases/tag/v1.2), [KB 034](knowledge-base/034-graph-clustering-lp-refinement.md) |
+
+Each session also produced a PDF report with one page per tested hypothesis, and its lessons went into the [knowledge base](knowledge-base/).
+
+## Quick Start
+
+In Claude Code:
+
+```
+/plugin install aae --marketplace CHSZLab/AgenticAlgorithmEngineering
+/aae:aae make the solver in src/ faster on the graphs in data/
+```
+
+The agent first agrees with you on the benchmark, the metric, the correctness checks and the budget, then runs the loop on its own and leaves the accepted patches and a report. For Codex and other agents, see [Installation](#installation).
+
 ## Algorithm Engineering
 
 Algorithm Engineering, as defined by [Sanders (2009)](https://doi.org/10.1007/978-3-642-03456-5_22), is a methodology for algorithmic research built around a cycle of design, analysis, implementation, and experimental evaluation. Unlike traditional algorithmics, which often stops at theoretical analysis, algorithm engineering insists on closing the loop: hypotheses about algorithm performance are tested experimentally on realistic inputs, and the results feed back into improved designs. Central to this process are falsifiable hypotheses, following Popper's scientific method applied to algorithms.
