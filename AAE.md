@@ -107,6 +107,7 @@ The user defines these per project. The agent must respect them strictly.
 **What the agent CAN do:**
 - Modify the designated target file(s). Everything within them is fair game: algorithms, data structures, parameters, control flow, memory layout, parallelism, etc.
 - Replace entire subcomponents (e.g. swap one algorithm for a fundamentally different one, replace a data structure with an alternative, rewrite a module from scratch) if the agent has reason to believe this will improve the target metric. Optimizations are not limited to incremental tuning; architectural changes and algorithmic replacements are encouraged when the analysis supports them.
+- The agents owns the codebase.
 
 **What the agent CANNOT do:**
 - Modify the benchmark harness or evaluation code.
