@@ -1,0 +1,561 @@
+# Speeding up a distributed (MPI) multilevel graph partitioner with bit-identical output
+
+## Problem
+
+Make ParHIP, the MPI graph partitioner of KaHIP (multilevel: label propagation (LP) coarsening,
+distributed contraction, evolutionary initial partitioning on the coarsest graph, projection and LP
+refinement), faster while every partition file stays byte-identical to the original for the same
+graph, k, preset, seed and number of processes. Benchmark: 180 jobs on 20 graphs (social, web and mesh, 0.3M to
+23M nodes), k = 8 and 64, 1 to 32 processes, fast, ultrafast and eco presets. Metric up to experiment
+029: shifted geometric mean of per-job ratios of the whole mpirun wall time (reading the graph and
+writing the partition included). From experiment 030 on (owner's decision): ParHIP's own "total
+partitioning time" (part, shift 0.01 s) as primary and its IO time as second headline; the wall time
+only as a check.
+
+## What Worked
+
+After 29 benchmark rounds (49 experiments, 29 kept, 19 discarded): **part time about 0.62 of the original
+(1.61x), IO time 0.565 (1.77x)**, every partition identical (seed 1 in every
+timed run, seed 2 checked separately after each keep, from experiment 030 on also clang + libstdc++
+builds). Up to round 14 the decisions used the wall time (chained 0.609); the trajectory was later
+recomputed on part directly against the stored master medians.
+
+1. **Per-phase timers first, then one hypothesis per phase per run.** A small RAII timer per phase
+   (io, coarsening LP, contraction, initial partitioning, projection, refinement LP, ghost exchange,
+   write), reduced to max and mean over ranks and printed by rank 0, costs nothing measurable and
+   lets several independent changes (one per phase, one commit each) share one 30-minute benchmark
+   run. Each change is judged by its own phase. Cross-cutting changes (shared data structures,
+   allocator) are run alone.
+2. **Output writing was 12% of total wall time.** The text partition was written with one
+   `std::endl` (flush, so one write system call) per node, process after process behind a barrier
+   chain. Formatting each process's labels into one buffer and writing it once, with the same barrier
+   chain, took the write phase from 109 s to 0.7 s (25% of total time at 32 processes).
+3. **Evaluate side-effect-free conditions lazily in the LP edge loop.** The loop computed a size
+   constraint (`getBlockSize`, a virtual call plus a hash lookup during coarsening) and other tests
+   for every edge, although they only matter if the candidate block is an improvement. Testing
+   `improvement` first and `continue` otherwise gave LP 16 to 19% faster and 8% overall. The
+   random tie-breaking draw must stay exactly where it was (it is consumed whenever the weight ties
+   the current maximum), otherwise the output changes.
+4. **Replace std::unordered_map where order is never observed.** Coarsening block weights per
+   cluster id, the LP neighbor-weight map, the label mapping and coarse node weights in contraction,
+   and the global-to-local ghost id map: all are pure lookup tables (or iterated where the order is
+   irrelevant: request lists whose replies are index-aligned, additive weight messages). Open
+   addressing with a power-of-two table, multiplicative hash and a vector of used slots gives
+   identical values. A missing key must behave like the original (weight 0).
+5. **Keep the maps whose iteration order defines the output.** The contraction's hashed edge map is
+   iterated to build the coarse graph, so its iteration order fixes the coarse edge order and with it
+   every later LP decision. It was left unchanged (no `reserve()`, no hash change).
+6. **Parse text input by hand.** mmap, memchr for line ends and a hand-written strtol-equivalent
+   into flat arrays (io phase 0.76); every process still scans the file to its first line.
+7. **Projection grouping by sort.** Sorting (coarse node, fine node) pairs and grouping replaces an
+   unordered_map of vectors and keeps the message and update order (project 0.91).
+8. **Stamp arrays instead of reset scans.** Two places scanned a node's edges a second time only to
+   reset per-PE "already sent" flags: `addLabel` (called on every label change of an interface node,
+   in both LP phases and in projection) and the contraction's ghost mapping. A per-PE mark that holds
+   a per-call counter (or node + 1 where each node is visited once) removes the second scan and sends
+   the same entries in the same order. `addLabel` alone: coarsen LP 0.97, ghost exchange 0.95,
+   projection 0.88, refinement 0.97, overall 0.985. Use a counter, not the node id, where the same
+   node can be processed twice.
+9. **Skip work that provably does nothing.** The global ghost update after each projection scanned
+   all local nodes; only interface nodes can have ghost neighbors (projection 0.93 total, 0.79
+   geomean). One lookup per LP edge instead of read, add and re-read (coarsen LP 0.96). Reserving the
+   local edge array at the average share 2m/p before reading (io 0.94).
+10. **Prefetch in the LP edge loop.** `__builtin_prefetch` of the target's node data eight edges
+   ahead: coarsening LP 0.95 total, up to 11% faster overall on the largest graphs, up to 4% slower on
+   small ones (net geomean 0.998). A prefetch never changes a value.
+11. **Devirtualize both implementations or neither.** Block weights are accessed through a virtual
+   base with one implementation for coarsening and one for refinement. Keeping a typed pointer to
+   each and calling `ptr->Concrete::getBlockSize(b)` (qualified, so non-virtual and inlinable) behind
+   one null test gave coarsen LP 0.99, refinement LP 0.98, ghost exchange 0.99, overall 0.991. A
+   first version that devirtualized only the coarsening path (typed pointer or virtual fallback) made
+   refinement 8% slower: the extra branch plus the remaining virtual call cost more than it saved.
+12. **A pool allocator for one container type, not for the program.** The contraction's hashed edge
+   map (`std::unordered_map`, iteration order defines the output) allocates one node per coarse edge.
+   A stateless allocator for this one map (single nodes from a free list in 64 KiB chunks, bucket
+   arrays from operator new) gave contraction 0.979 total and 0.944 geomean, overall 0.992, peak memory
+   slightly lower. Iteration order of `std::unordered_map` depends on hash and insertion order, not on
+   node addresses, so the output is unchanged. The global new/delete replacement of round 4 had
+   reached a similar contraction gain but was rejected as too invasive for a 4% gain in one phase;
+   the type-local form keeps the gain with one header and one typedef.
+13. **More provably-empty work.** A per-call stamp also in the global ghost update (projection 0.90
+   total, 0.94 geomean); returning early from the ghost block balance update when the label did not
+   change (ghost exchange 0.96).
+
+14. **Reproduce the iteration order of `std::unordered_map` instead of using it.** The coarse edge
+   order is the iteration order of the contraction's hashed edge map. libstdc++ keeps one singly
+   linked list: a new key goes to the front of its bucket's run if the bucket is occupied, else to the
+   front of the list, and a rehash re-inserts the list in order with the same rule. So for an
+   insertion sequence into B buckets the order is: bucket runs by first-use time descending, each run
+   by insertion time descending, computed epoch by epoch with the container's own
+   `std::__detail::_Prime_rehash_policy` (initial bucket count 1). An open-addressing array map plus a
+   counting sort per rehash epoch gives the identical order: contraction 0.718 total (0.842 geomean),
+   overall wall 0.963 / total 0.938, part 0.956 / total 0.929. Conditions for keeping such an emulation of library
+   internals: a randomized equivalence test against the real container as a test target, a
+   compile-time guard that enables it only for library releases on which the test ran (here
+   libstdc++ 11, 13, 15 with g++ and clang++) and falls back to the container everywhere else, the
+   identity check with a second compiler, and a gain of at least about 2% overall.
+15. **Dense array for the locally owned part of a sparse key range.** Coarsening block ids are global
+   node ids; most blocks seen by a process are its own nodes' ids. A dense array for the local id
+   range in front of the hash map for the rest: coarsening LP 0.911 total (0.904 geomean).
+16. **Find the first line of a process without scanning the prefix.** Each process counts the node
+   lines starting in its own byte chunk of the file, one Allgather of the counts, and each process
+   starts at the chunk holding its first node: IO 0.919 total (0.899 geomean).
+17. **Small things that still count:** one reused receive buffer and an `MPI_Request` vector with one
+   `MPI_Waitall` instead of a heap request per Isend (ghost exchange 0.988), and a linear scan over a
+   16-entry inline array instead of the hash table for nodes of degree at most 16 in the LP
+   (coarsening LP 0.987; the weight per label and every tie break stay the same).
+18. **Prefetch the hash map slot of the lookups that integrate a received message.** The ghost
+   exchange, which runs inside both LPs every few hundred nodes, looks up every received global id in
+   an open-addressing ghost id map with a multiplicative hash, so each update of a large message
+   waits for a cache miss. Prefetching the slot eight updates ahead: ghost exchange 0.929 total
+   (0.966 geomean), and with it coarsening LP 0.969 and refinement LP 0.989, part 0.984 (0.980 at
+   p = 16). The same trick in the contraction's label mapping: contraction 0.986. The exchange had
+   been read as "waiting for slower processes" from a profile; part of it was this integration work.
+   A prefetch changes no result, so it is the cheapest kind of change under a bit-identity
+   constraint.
+
+### Profiling a latency-bound loop
+
+perf was not available; an `LD_PRELOAD` time sampler (ITIMER_PROF at 1 kHz, `backtrace`, symbolized
+afterwards with `addr2line -i`) gave per-function and per-line shares with each job weighted equally.
+It attributed 39% of the samples to the LP's hash table frames, yet replacing the table for small
+degrees gained only 1.3%, and moving the labels into their own dense array gained nothing: in a loop
+bound by a random load, samples land on the instruction that consumes the load (the hash of the
+loaded label), not on the load. Before building on an inline-attributed share, test it with a cheap
+change of the presumed cause.
+
+### Code layout as a confound in per-phase judgments
+
+A contraction change (038) gained 2% in its own phase and lost 3.7% in the refinement LP, whose
+code it did not touch. The coarse graphs were bit-identical (hash of every level), the slowdown was
+reproducible to 0.5% over 20 timed runs, and it came from a 16-byte move of the refinement
+function: code linked earlier in the binary had changed size. A timed padding sweep (a dummy
+function of 0, 16, 32 or 48 bytes in front of it) showed that the refinement LP is 1.18 to 1.33x
+slower on single-process k = 64 jobs (1.02 to 1.06x for k = 8) when the function starts 48 bytes
+past a 64-byte boundary, and equally fast at the other three offsets. So roughly one change in four
+draws a large false penalty (or a false gain, when it leaves the slow offset) in a phase it does not
+touch. Remedy: `__attribute__((aligned(64)))` on that one hot function, behind a macro that is
+empty on other compilers; with it all four paddings measured the same, and the change itself was
+neutral. Procedure when a phase whose code did not change moves beyond its band: compare the hot
+functions' addresses modulo 64 in both binaries (`nm`), bisect the commit, and run a padding sweep
+before judging. Untimed runs on a loaded machine are useless for this (they suggested a random,
+stack-address effect; under exclusive the effect was strictly per binary). Retesting two earlier
+refinement-side discards with the alignment fixed confirmed one of them as a real loss.
+
+### Leaving fresh memory uninitialized, and checking it
+
+The largest io gain of the later rounds came from not zero-filling the edge array before the graph
+is built: an allocator whose default `construct` does nothing (`std::vector<Edge,
+uninitialized_allocator<Edge>>`) makes `resize` leave new trivial elements uninitialized, and the
+builder writes every entry once. io 0.848 total (0.871 geomean), peak memory 1445 to 912 MB. The
+gain is a first-touch effect: the fill touched hundreds of MB of fresh pages ahead of the parser,
+which then wrote them a second time. The same trick on short-lived, reused receive buffers gave
+nothing measurable (glibc hands back pages that are already mapped), and on the much smaller node
+array it lost more in the builder (a per-node branch) than it saved.
+
+Two pitfalls. (1) `resize` keeps old entries, and a caller can depend on that: ParHIP rebuilds a
+graph in place on top of an old one and later reads fields that the rebuild does not write. Zeroing
+"fresh" entries in the builder must therefore zero only the entries beyond the previous size; the
+first version zeroed all of them and changed the output (caught at once by the quick hash check).
+(2) Bit-identical output on one machine cannot prove that no byte is read before it is written; a
+latent read can pass here and differ elsewhere. Check with valgrind memcheck
+(`--track-origins=yes`) on a build without `-march=native` (valgrind cannot decode AVX-512), at
+p = 1 and p = 4, on social and mesh graphs, fast and deterministic eco presets. Run the p = 4 cases
+a second time over TCP (`--mca pml ob1 --mca btl tcp,self`): data that crosses process boundaries
+through shared memory is not checked, but bytes passed to `writev`/`sendto` are. Expect noise from
+the MPI library itself (uninitialised bytes in Open MPI and PMIx headers, origin in libmpi,
+libopen-pal or libpmix) and classify every error by its origin stack; here all 214 reported errors
+in 72 rank logs were of that kind, with 0 invalid accesses and 0 uses of uninitialised values
+originating in ParHIP allocations.
+
+### Relaxing identity to a quality budget: measure the cut noise first
+
+After 52 experiments (30 kept) the owner relaxed the identity rule: output may change if the average
+cut moves by at most 0.1% (Q = geomean over jobs of (mean cut + 1) / (master mean cut + 1) over the
+same seeds, cumulative against the original, Q <= 1.001; balance, determinism of the deterministic
+build and the interface stay fixed). Freeze the bit-identical best first (tag plus patch series) as
+its own deliverable. Then measure the cut noise before any experiment: on this benchmark, original
+seeds 1 to 5 against seeds 6 to 10 gave Q = 0.9926, and the sd of log Q over random 5/5 splits was
+0.44%, so a 0.1% budget is far below what a few seeds can resolve (uniform seeds would need about 40
+per side for SE 0.1% and 150 for 0.05%). The variance sits in a few jobs (one social graph at k = 8
+with sd 53% of the log cut at p = 1; the median job 1.3%, mesh graphs below 1%), and those jobs are
+cheap, so a Neyman allocation of seeds per job (S_j proportional to cv_j / sqrt(cost_j)) cuts the
+cost about tenfold: SE 0.05% for about 2.6 CPU-hours per candidate on 16 cores. The delta-method SE
+from 5 seeds underestimates (0.27% against 0.44% observed) because the cut distribution has heavy
+tails; validate the protocol with an A/A split of a large master reference before trusting it. Even
+the original goes over the imbalance bound on 2% of the runs (social graphs, k = 64, 16 to 32
+processes), so a balance rule must compare against the original job by job.
+
+### Keep rule for multi-component runs
+
+Judge each component commit by its own phase, not by the overall geomean against a fixed threshold:
+keep it if (1) its phase improves beyond that phase's run-to-run noise, (2) the overall time is not
+worse beyond noise, (3) the output is identical, and (4) the code is not disproportionately complex
+for the gain. A phase that is 5% of the run can improve by 20% and still move the overall geomean by
+only 0.3%; with a fixed overall threshold such clean wins (here: the interface-only ghost update) are
+lost. Measure the per-phase noise as the largest deviation from 1 when the same binary is measured in
+two separate runs (instrumented builds; we used four such pairs of full runs). Worst A/A deviations
+(phase total / geomean of per-job phase ratios), full set of 180 jobs:
+
+| wall | coarsen LP | ghost exchange | contraction | io | initial part. | projection | refinement LP |
+|---|---|---|---|---|---|---|---|
+| 0.2% / 0.8% | 0.2% / 0.8% | 0.5% / 1.6% | 0.2% / 0.7% | 0.1% / 0.4% | 0.9% / 1.0% | 0.2% / 0.4% | 0.2% / 1.2% |
+
+On the 29-job quick set the bands are 2 to 4 times wider (0.4% to 1.4% total, 0.9% to 3.3%
+geomean), so a screen only selects candidates and a full run decides. When two commits of one batch
+can touch the same phase, run three binaries (control, first commit, both) in one alternating run.
+
+### Phase 2 (0.1% quality budget): output-changing speedups
+
+Once the output may change within a cut budget, the largest single gain came from balancing the
+work per process at the finest level, not from local code changes. The per-round block-weight
+Allreduce of label propagation was about 2/3 waiting at 16 to 32 processes; a per-process counter
+showed equal node counts but up to 7.9 times the mean edge count on one process (social graphs
+stored with hubs first). Splitting the input so that each process gets about the same
+`adjacency entries + node lines * average degree` (counted per 1/1024 of each process's byte
+chunk, one Allgather) gave part 0.945 geomean (social graphs 0.87 to 0.92 at p >= 4, meshes
+neutral), ghost-exchange time 0.74, IO 0.90, and a slightly better cut (Q 0.998). Lessons:
+
+- Bytes are a biased proxy for edges: later lines hold longer node IDs, so a byte split gave the
+  first processes of a geometrically ordered mesh more work (meshes 1.04 slower). Count entries.
+- Half node, half edge balance was as fast as pure edge balance (edge max/mean 1.9 instead of 1.2)
+  and avoids processes with almost no nodes.
+- A counting pass in the reader must be branch-free (vectorized) and skipped with one process: the
+  first, branchy version cost 29% of IO at p = 1.
+- Coarsening order: visiting nodes of a degree class in node order (counting sort) is cache
+  friendly (coarsening 0.88) but sweeps mesh geometry and costs mesh cut (+0.3%); shuffling chunks
+  of 128 consecutive nodes keeps most of the speed (0.91) with neutral mesh cut. About 2/3 of that
+  gain depends on the given node numbering (randomly permuted inputs: part 0.986 instead of 0.96).
+- Quality gate that held up: Neyman-allocated seeds per job (cv of the cut over sqrt of cost), a
+  master reference with twice the seeds, Q = geomean of (cut + 1) ratios on paired seeds, A/A SE
+  0.05%; screen on a quarter of the seeds, discard above Q 1.003; balance as one-sided Fisher tests
+  of over-bound rates per job with Bonferroni, plus a pooled test.
+
+### Phase 2: coarse-level rebalancing, fresh seeds, and measuring on a second host
+
+The finest-level split left the coarse levels with equal node ranges per process, so hub-heavy
+graphs got up to 2.9 times the mean edge count per process again after contraction. Four attempts:
+
+- Rebalancing every coarse level by edge cost: part 0.995 overall, youtube 0.84, but meshes 1.012
+  (p = 32 1.028). Moving coarse ranges costs locality where the split was already even.
+- Rebalancing only when the equal split puts max > 2 x mean cost, with an extra pass over the
+  coarse edges to count: on held-out graphs 0.85 to 0.97, but one graph 1.078 with identical
+  output (the pass itself).
+- Cost from fine degrees summed per bucket of coarse IDs during contraction: no extra pass, but a
+  256 KB Allreduce per level and a 64-bit division per node: output-identical p = 32 jobs 1.011.
+- Two-stage reduction: each process sums its local buckets per equal range, an Allreduce of p
+  values decides, and the full histogram is reduced only on levels that fire; power-of-two
+  buckets (shift instead of division). Output-identical p = 32 jobs 1.003, part 0.989 / 0.982,
+  unseen hub-heavy graphs 0.956 with a road-network control at 1.003. Kept.
+
+Lessons: measure the overhead on output-identical jobs with repetitions before judging gains;
+decide from a small summary and reduce the full data only when needed; graphs looked at while
+tuning stop being held-out (confirm on unseen graphs plus a control that cannot fire).
+
+Selection bias check: after four kept output-changing changes, the cumulative best and master
+were both run on seeds no earlier run had used (beyond the 2x master reference): Q 0.9939 against
+0.9953 to 0.9958 on the selection seeds, so the noise picked while selecting did not flatter the
+result. One balance flag with 3 seeds (1/3 vs 0/3) disappeared with 200 more seeds per side.
+
+A second machine (Xeon Silver 4216, same core numbering, about 1.6x slower) inflates speedups: the
+same pair of binaries gave 0.956 there and 0.989 on the main host, and the direct master ratio
+0.49 instead of 0.55. Keep one host per trajectory, report the other host's figure with its label,
+and build both sides of a timed pair on the same host (`-march=native` binaries from the other
+host are a different code generation).
+
+A byte-counting loop that gcc vectorizes is still slow with 64-bit accumulators (every flag is
+widened); 8-bit counters over blocks of 255 bytes run 2.6x faster (1.96 to 5.1 GB/s per core) with
+identical counts, and IO improved 2 to 3.5% at p >= 4.
+
+Process lessons from running unattended chains: gate every step on the command's exit status, not
+on grepping a log (a failed cmake left a chain waiting 3.5 hours), and give every wait a timeout
+that raises an alert; kill only by a looked-up process ID, never by pattern (a `pkill -f` matched
+the shell that issued it); record which MPI build each run used, and compare against master only
+from a direct rerun with the same MPI on both sides (a ratio chained through an intermediate
+binary was 0.6205 against 0.6155 direct); do no heavy work on a shared host while another user's
+exclusive job runs there, including checksums and report builds.
+
+### Phase 3: completing nonblocking sends, rebasing, and the input graph build
+
+An audit of ParHIP's nonblocking sends (MPI 4.1: every request must be completed, and a send buffer
+must not be touched before completion) found requests that were never waited on. A PMPI wrapper
+that counts outstanding requests at `MPI_Finalize` is the reliable detector: MPICH's
+"pending references" message misses requests on duplicated communicators. Counts at p = 4 grew
+linearly with the number of partitioner calls (164 to 820 per rank for 1 to 5 calls) before the
+upstream fix, and one remaining case (the evolutionary partitioner sending a population size that
+it then changes) needed `MPI_Waitall` before the buffer is reused. An apparent hang was the eco
+preset's evolutionary time limit (2048 / p seconds), not a deadlock; use a deterministic build for
+leak tests. After each upstream merge, rebase, check partition identity of new master vs old master
+and of the rebased branch vs the branch before, keep a map of old to new commit ids next to the
+results table (its ids stay as recorded), and run one timed neutrality check.
+
+Input graph build: per-phase timers (12 phases) plus per-process counts showed that the build, not
+the parse, was the largest phase on meshes and social graphs, and that its time followed the number
+of new ghost nodes per process (delaunay_n22 p = 16: 1.25M ghosts on one process, 0.253 s, against
+89k and 0.065 s elsewhere). The cost was growth: 18 rehashes of the ghost map and doubling of three
+arrays. An exact distinct-ghost count from a bitmap over global ids (only when the bitmap is not
+larger than the local target array) and one reservation cut io by 14% in total on meshes at
+p >= 16 (delaunay_n22 0.73, social p = 32 0.90) with identical output. Two alternatives lost: the
+ghost-edge count as a bound over-reserves 4 to 14x on social graphs, and key/value slots in the
+open-addressing map (one cache line per probe) made the build 5 to 7% slower.
+
+Code layout also moves IO: on the second host, five binaries with the same reader code path at
+p = 1 gave stable, binary-specific reader times differing by up to 8% (eu-2005 0.920 to 1.000 s,
+spread within a binary about 1%); two of them differed only in communication code. The run order
+inside a pair matters too (the second run's IO is 3 to 6% faster), but alternating the order cancels
+it; layout does not cancel. Use p = 1 jobs, where a parallel-only change does not run, as the
+layout calibrator: report IO claims below about 5% net of the p = 1 band, and confirm them on the
+main host.
+
+Number parsing in the reader: once the build was cheap, the parse was about 12 ns per adjacency
+entry, dominated by the per-digit branch of the strtol-like loop (number lengths vary, so it
+mispredicts about once per number). Reading the 8 bytes at the number start (`memcpy` into a
+64-bit word), finding the run length with a branch-free byte mask and converting up to 7 digits
+with three multiplications, with everything else falling through to the old routine, made the
+parse 1.7 to 1.9x faster single-core and io 0.902 in total (social 0.89 to 0.93, p = 1 on large
+files 0.82 to 0.86) with identical output; a fuzz test against the old routine (also under
+address and undefined-behaviour sanitizers, inputs in exact-size heap buffers) guards the
+equivalence. The in-run gain at p = 16 was about half of the single-core one (shared memory
+bandwidth, page faults of the fresh target array). An earlier sentinel parser that kept the
+per-digit loop had shown nothing (round 12): the digit loop, not the scan, was the cost.
+
+### Phase 3: splitting LP time into local work and waiting
+
+After the reader work, io is about 5% of the total and the part phases are the lever (coarsening LP
+197 s, refinement LP 102 s, contraction 90 s, ghost exchange 83 s inside the LP phases, over the
+180 jobs). Two contraction experiments failed on wrong premises, and a per-rank split of the LP
+time changed the target.
+
+- Contraction: per-rank sub-step timers showed that the order-preserving edge map (local build,
+  ordered iteration, the second map on the receiver) is 60 to 80% of contraction on the slowest
+  rank. Putting the key and the weight into the probe slot (one cache line per lookup instead of up
+  to four) made contraction 2.3% slower: ids are handed out in insertion order and lookups come in
+  runs of the same coarse source, so the id-indexed side arrays were already cached; the 4x larger
+  slot array and a gather pass cost more. An exact multiply-based modulo in the order computation
+  saves only 6 to 16% of that step: the order computation is bound by its random scatter.
+- Coarse rebalancing from the exact edge copies each owner receives (instead of fine degrees):
+  a firing table (one diagnostic line per contraction, every job, seed 1) showed it fires on fewer
+  levels than the fine-degree rule (24 vs 41 social jobs) and not at all on the motivating job.
+  The excess of the slowest rank was on the sending side (its hubs create 4.5x more local coarse
+  edges), which no choice of coarse ranges moves. Lesson: check the firing table, which costs
+  minutes, before redesigning a decision rule.
+- LP split (per rank: total, block-weight allreduce, probe wait, receive and integrate, Isend
+  Waitall, final barrier): refinement is imbalance-bound. On enwiki-2013 (16 PEs) 9.6 of 15.9 s
+  are the per-round block-weight allreduce, while the total compute differs by only 10% between
+  ranks: a round is a fixed number of nodes in random order, so its edge work varies with the
+  hubs it draws, and every round costs the maximum over ranks. Social and web graphs: 50 to 74% of
+  refinement is this wait; meshes 20 to 25%. Coarsening is compute-bound (local LP plus 38% for
+  integrating ghost updates). Meshes show a separate, large compute imbalance in coarsening
+  (one rank 3.2 s, most others near 0) that is not yet explained.
+- Rounds of equal work instead of equal node counts: a round ends once the visited nodes'
+  degree + 1 add up to (local edges + local nodes) / rounds. In both LP phases this cut the
+  refinement wait as intended (enwiki 9.6 to 2.5 s), but cost 0.23% cut (fast presets 0.6%, one
+  job 20%): in coarsening, a process with many low-degree nodes now visits far more nodes between
+  exchanges, so the labels it sees are staler while clusters form. Applied to refinement only
+  (moves between k blocks under a bound are insensitive to one round of staleness), the cut is
+  unchanged (0.9998, held-out 0.997, unseen 0.998) and part time drops 4.3% total (refinement
+  0.79; social graphs at 16 and 32 processes 0.90). Round boundaries are part of the coarsening
+  algorithm, not only a communication schedule.
+- A branch on a loop-invariant flag in the LP node loop cost about 1% of coarsening (first
+  V-cycle, identical work, three alternating repetitions); one template instantiation per value
+  removed it. Measure such costs on the first V-cycle: later cycles see a different partition.
+- Count what the ghost exchange receives before tuning how it is processed. A third of the
+  coarsening updates and 96% of the refinement updates (enwiki, 16 processes) changed no label:
+  every interface label set outside label propagation (projection, V-cycle reset, initial
+  assignment) was buffered and sent in the next LP's first round, although those callers already
+  leave ghosts consistent. Recording only while the LP runs removed them with identical output;
+  part time 0.942 total (16 and 32 processes 0.95 gm, projection 0.76).
+- On one process the timed gain of dropping the work counter was 2.4% of refinement, against 11%
+  in an untimed single-core screen; in the same run, unchanged p1 coarsening moved by 3.7%.
+- An allocation that lives across phases can cost an untouched phase as much as code layout: a
+  per-node list of adjacent processes, built at a graph's first label propagation and kept until
+  the graph is freed, sped up coarsening (0.94 at 16 and 32 processes) but made refinement 3.5 to
+  9% slower (timed) with identical output. Untimed variants (3 repetitions, spread under 0.4%)
+  separated the causes: moving the new code out of line did not help, while building the lists
+  without ever reading them reproduced the refinement loss (up to 11% more refinement work). The
+  mechanism is unproven (likely the address shift of everything allocated after the lists). Treat
+  any longer-lived or larger allocation, such as a bigger hash table reserve, as a footprint change
+  and measure the other phases too, not only the one it targets.
+  Follow-up: freeing the lists when the coarsening label propagation ends brought refinement back
+  on the social graphs (enwiki 1.047 to 1.010, youtube 1.052 to 1.028), and a reserve of 2 or 4
+  times the needed hash table size also slowed refinement by 1 to 8%. On the mesh (hugetrace) the
+  loss stayed, and a run-time switch that never built the lists, in the same binary, still showed
+  7% more refinement work than the base, while two diag binaries that differ by one getenv call
+  differed by 3%. So part of such a loss is a binary effect, not memory: separate the two with a
+  run-time switch in one binary before concluding footprint, and let the timed net on the full set
+  decide.
+- Split a hot spot before optimizing it: of the ghost update integration in coarsening, 96% was
+  the block weight hash map (random keys: the labels of the updates), not the label stores. A
+  software prefetch ring over the incoming message (ghost id slot 8 updates ahead, ghost lookup,
+  node data and the new label's weight slot 4 ahead, the old label's slot 2 ahead) cut that loop
+  from 3.7 to 2.8 s on the critical rank, with identical output; part time 0.976 total on the
+  full set (16 processes 0.964, coarsening LP 0.946, refinement unchanged: no new allocation).
+  Reserving the map to its final size instead lost (doubling the zeroing, refinement up to 8%).
+- An optimization that crashed once in a deterministic build and then never again was parked, not
+  called a flake: per-node lists of adjacent processes (about 1% net) segfaulted on one 4-process
+  job and hung another in one packed, oversubscribed identity batch; 6 plain repeats, sanitizer
+  (address, undefined, libstdc++ assertions, an explicit range check on the list path), valgrind
+  and three reruns of the batch all passed, and so did the base. Keep the failing batch, core dumps
+  and per-rank stderr when a run fails; a rerun loop without them only shows that it is rare.
+- UndefinedBehaviorSanitizer stops at an upstream line (uncoarsening.cpp binds a reference to a
+  null complete_boundary) before reaching ParHIP's own code; suppress that line to get further.
+- Split the label propagation node loop by degree class before guessing: per edge about 90 to 140
+  cycles, and the short linear-search path (degree up to 16) cost more per edge than the hash
+  path, so the cost was not the hash table but the first misses of every node (its record, first
+  edges, own data and first target labels; the in-node prefetch 8 edges ahead never covers short
+  nodes). Prefetching these a few nodes ahead in the visiting order (record 4, first edge line 2,
+  data and up to 8 first targets 1 ahead) cut coarsening LP by 11% (178 to 158 s) and refinement
+  LP by 7% on the full set, part 0.938 total, identical output. The untimed diag gain (13% over 8
+  jobs) carried over; trust such a diag over a guess.
+- Sizing the hash table prefix per node (pow2 >= 2 * degree instead of 2 * max degree, 8 MiB for
+  enwiki) gave 2.7% of coarsening LP but only 0.7% of part time: inside the 1% band, not kept.
+- Collecting a moved node's adjacent processes during the scan (a bitmask) to skip the send
+  rescan lost 3.6%: every ghost edge of every interface node pays the process lookup, but only
+  moved nodes save the rescan, and in refinement few nodes move (refinement LP +18%). The diag had
+  only measured the coarsening phase; when a change touches code shared by both LP phases, measure
+  both.
+- Projection was mostly the global ghost label update (enwiki 3.0 of 3.1 s), and its time was
+  work, not waiting: the first message arrived at once, but each received (global id, label) pair
+  is a random lookup in the ghost hash map. The same prefetch ring as in the ghost exchange (hash
+  slot 8 pairs ahead, lookup and node data 4 ahead) cut projection from 25.1 to 16.5 s on the full
+  set, part 0.979 total, identical output.
+- A prefetch ring must be larger than its lookahead: a first diagnostic version with 4 slots at
+  distance 4 overwrote each slot before reading it, gave wrong ghost labels and crashed later in
+  refinement. Name the distances and the ring size as constants and `static_assert(lookahead <
+  ring_size)`.
+- Run the sanitizer build with libstdc++ assertions on prefetch code too: `&v[i]` for a prefetch
+  of the first edge of a node a few ahead hit `i == size` (a trailing node without edges). It is
+  harmless at run time (a prefetch never faults) but out of range; form the address as
+  `v.data() + i`. Only one graph (enwiki) and both process counts triggered it, the mesh did not.
+
+## Experiment Data
+
+| Round | Change (phase) | Phase ratio | Full geomean | Verdict |
+|---|---|---|---|---|
+| 1 | buffered writer (write); block weight map (coarsen LP); mmap reader (io) | 0.006; 0.76; 0.76 | 0.738 | keep all |
+| 2 | LP neighbor map; projection sort grouping; contraction maps | 0.97; 0.91; 0.94 | 0.972 | keep all |
+| 3 | ghost id open-addressing map plus binary search for the owner PE (cross-cutting) | io 0.92, comm 0.93 | 0.983 | keep |
+| 4 | small-block allocator for operator new (cross-cutting) | contract 0.96 | 0.995 (quick) | discard |
+| 5 | LP lazy size constraint; contraction flat adjacency | 0.84/0.81; 0.99 | 0.921 | keep; discard |
+| 6 | LP one map access per edge; refinement touched-entry reset | 0.96; 1.035 | 0.986 (first alone) | keep; discard |
+| 7 | packed-key degree sort; interface-only global ghost update | refine 1.14; project 0.93 | 0.998 (second alone) | discard; keep (per-component rule) |
+| 8 | reused receive buffer; reader reserve; contraction stamp | comm 0.99 (gm 1.00); io 0.94; contract 0.98 | 0.994 | discard; keep; keep |
+| 9 | addLabel stamp; LP prefetch | see 8. and 10. above | 0.985; 0.998 | keep; keep |
+| 10 | std::fill to clear the refinement weight array | refine 0.994 (gm 0.987) | 1.000 (quick) | discard (inside quick noise) |
+| 11 | global ghost update stamp; skip unchanged ghost balance | project 0.90; comm 0.96 | 0.993 (both) | keep; keep |
+| 12 | newline-sentinel number parser in the reader | io 0.99 | 1.001 (quick) | discard (inside quick noise) |
+| 13 | coarsening-only devirtualization; both balance types devirtualized | refine 1.08; see 11. above | 1.007; 0.991 | discard; keep |
+| 14 | node pool allocator for the hashed coarse graph | contract 0.979 (gm 0.944) | 0.992 | keep |
+| 15 | dense local block weights (coarsen LP); per-chunk line counts (io) | 0.911; 0.919 | 0.960 (both) | keep; keep |
+| 16 | array map with reproduced unordered_map order (contract); degree-sized LP table | 0.718; coarsen 0.988 (gm 1.004) | 0.963 (part 0.956); 1.006 | keep; discard |
+| 17 | node labels in their own array (cross-cutting) | coarsen 1.010, refine 1.024 | part 1.002 | discard |
+| 18 | refinement touched-entry reset; Iallreduce overlapped with the ghost receive | refine 1.140; comm 1.054 | part 1.017; 1.002 | discard; discard |
+| 19 | no allocation per ghost message; small-degree linear scan in LP | comm 0.988; coarsen 0.987 | part 0.998; 0.995 | keep; keep |
+| 20 | MADV_POPULATE_READ on the reader chunk; contraction adjacency as one array plus message swaps | io 0.991; contract 0.982 but refine 1.037 | part 1.001; 1.005 | discard; discard (layout, see above) |
+| 21 | contraction adjacency as one array without the swaps | contract 0.994 (gm 0.986) | part 1.001 | keep |
+| 22 | 64-byte alignment of the LP function; refinement touched-entry reset retested | all phases in band; refine 1.140 | part 1.000; 1.028 | keep (hygiene); discard |
+| 23 | retest of the separate label array with the fixed alignment | coarsen gm 0.986, project 1.033 | part 1.010 total | discard |
+| 24 | edge array not zero-filled before the build (io) | io 0.848 (gm 0.871), peak RSS 1445 to 912 MB | part 0.999 | keep |
+| 25 | contraction receive buffers without fill, swap (contract); projection receive buffers without fill (project) | contract 1.002; project 0.984 (gm 0.996) | part 1.000 | discard; keep |
+| 26 | node data array not zero-filled (io, contract) | io 0.989 (noise), contract 1.006 | part 1.001 | discard |
+| 27 | degree sort on packed keys, retested with the fixed alignment | coarsen 1.004 (gm 1.013), refine in band | part 1.002 | discard (the earlier refinement loss was layout, the verdict stands) |
+| 28 | prefetch in the ghost exchange (comm); prefetch in the contraction's label mapping (contract) | comm 0.929 (gm 0.966); contract 0.986 | part 0.984; 0.997 | keep; keep |
+| 29 | early stop of refinement LP when moves plateau (output-changing) | cut +0.2 to 0.3% | about 0.2% part per 0.01% cut | discard (late sweeps carry the cut) |
+| 30 | degree order by counting sort, then random 128-node chunks per degree class (coarsen) | coarsen 0.865 | part 0.956 | keep (Q 0.998, mesh 1.000) |
+| 31 | Iallreduce of block weights with one round lag (refine) | wait moves into MPI_Wait | part 1.00 | discard (load imbalance, not latency) |
+| 32 | input split balancing entries + node lines (io, all LP phases) | comm 0.743, io 0.896 | part 0.945 | keep (Q 0.998 vs previous) |
+| 33 | coarse PE ranges rebalanced by edge cost at every level (contract, all coarse LP) | youtube 0.84, mesh p32 1.028 | part 0.995 | discard (locality) |
+| 34 | the same, guarded by max/mean > 2 with a counting pass; then cost from fine degrees per coarse-ID bucket | identical-output jobs 1.078 (one graph); 1.011 at p32 | part 0.995 / 0.983 | discard (overhead) |
+| 35 | guarded rebalancing with a two-stage reduction and power-of-two buckets | identical-output p32 1.003; unseen 0.956 | part 0.989 | keep (Q 0.9958; fresh seeds 0.9939) |
+| 36 | 8-bit block counters in the reader's counting pass (io) | io 0.978 (p >= 4: 0.95 to 0.97 total) | part 0.998 | keep (identical output; second host) |
+| 37 | ghost map and arrays reserved to the exact ghost count (io build) | io 0.949 (mesh p16/p32 0.86 total; net of p = 1 band about 0.92) | part 1.003 | keep (identical output; second host) |
+| 38 | adjacency numbers of up to 7 digits from one 8-byte load (io parse) | io 0.930 (gm) / 0.902 (total) | part 1.001 | keep (identical output; second host) |
+| 39 | contraction edge map: key and weight in a 32-byte probe slot (contract) | contract 1.023 (untimed screen, 6 jobs) | part 1.006 | discard (no timed run) |
+| 40 | coarse PE ranges decided from the exact edge copies per owner (contract) | fires on 24 vs 41 social jobs | n/a | discard (falsified by the firing table) |
+| 41 | LP rounds of equal edge work in coarsening and refinement | refine 0.56 (enwiki), cut 1.0023 | n/a | discard (quality: stale labels in coarsening) |
+| 42 | the same in refinement only, node loop instantiated per round rule | refine 0.788 total; social p16/p32 part 0.90 | part 0.957 (gm 0.974); unseen 0.938 | keep (Q 0.9998) |
+| 43 | one process: refinement LP without the work counter | p1 refine 0.976 (gm) | p1 part 0.972 (gm, about 3% placement) | keep (identical output; timed with 44) |
+| 44 | ghost labels recorded only while LP runs (no buffered no-op updates) | project 0.76, comm 0.91, refine 0.94, coarsen 0.95 | part 0.942 (gm 0.953); unseen 0.956 | keep (identical output) |
+| 45 | per-node list of adjacent processes for the ghost label sends (lists freed after coarsening) | coarsen 0.96, refine 1.03 (lists kept) | not timed as the freed variant | parked (one unexplained crash and hang in an identity batch) |
+| 46 | coarsening block weight map: prefetch ring over incoming ghost updates | coarsen 0.946, comm 0.855, refine 0.997 | part 0.976 (gm 0.984); unseen 0.986 | keep (identical output) |
+| 47 | label propagation: prefetch across nodes in visiting order | coarsen 0.888, refine 0.928 | part 0.938 (gm 0.944); unseen 0.974 | keep (identical output) |
+| 47 | LP hash table prefix sized per node degree (on 47) | coarsen 0.973 | part 0.993; unseen 0.987 | not kept (inside the 1% band) |
+| 47 | moved node's adjacent processes collected in the scan (on the above) | coarsen 1.006, refine 1.183 | part 1.036; unseen 1.020 | discard |
+| 48 | global ghost label update: prefetch ring over the received pairs (project) | project 0.660 | part 0.979 (gm 0.987); unseen 0.988 | keep (identical output) |
+
+From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
+0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
+between two binaries with identical reader code, so IO differences below about 2% are noise.
+
+Noise between two passes of the original: geomean drift 0.4%, per-job sd of log ratio 0.027.
+Per-phase noise: see the keep rule above.
+
+## What Didn't Work
+
+- Overlapping the per-round block-weight Allreduce (Iallreduce, one round lag): the wait just
+  moved into MPI_Wait, because it is load imbalance between processes, not latency.
+- Stopping refinement label propagation early when moves plateau: the late sweeps are worth 0.2 to
+  0.3% of the cut, so the trade (0.2% time per 0.01% cut) is poor.
+- A small-block allocator replacing global new/delete (worked for sequential KaHIP) gave only 0.5%
+  here: after the hash maps were replaced, ParHIP's allocations are mostly large vectors.
+- Turning the contraction's vector-of-vectors adjacency into a flat array changed contraction by
+  only 1%; the order-defining hash maps dominate that phase.
+- Sorting nodes by degree on packed (degree << 32 | node) keys gives the same permutation (same
+  comparison results) but was slower: the per-call key vector and two copy passes cost more than the
+  cheaper comparisons (refinement 1.14x slower).
+- Resetting only the touched entries of the refinement LP's k-entry weight array (k = 64) was slower
+  (1.035) than clearing all k entries.
+- Reusing one receive buffer in the ghost exchange: no gain beyond noise; the small, short-lived
+  vectors are cheap for glibc malloc.
+- `std::fill` instead of a hand loop to clear the k-entry refinement array, and a sentinel-based
+  number parser in the reader: both inside the noise of their phase (the compiler already vectorizes
+  the loop; the reader is bound by scanning, not by digit parsing).
+- Devirtualizing only one of two implementations behind a branch (see 11.).
+- Sizing the LP neighbor table per node by its degree (power-of-two prefix of the table): coarsening
+  LP total 0.988 but geomean 1.004; the per-node sizing costs the small mesh jobs more than it saves.
+- Moving the node labels out of the 32-byte node struct into a dense array (hot/cold split): no gain
+  (coarsening 1.010, refinement 1.024). The prefetch already hides the label loads; the edge array is
+  the larger stream.
+- Resetting only the touched entries of the refinement weight array, tried a second time with a
+  first-use test per access, and a third time with the function alignment fixed: 1.14x slower each
+  time. A full reset of 8 to 64 entries is a few sequential
+  stores.
+- `MPI_Iallreduce` started before the ghost receive and completed after it: ghost exchange 1.054.
+  The reduction was never the cost; the waiting is imbalance between processes, and the
+  non-blocking collective adds progress overhead.
+- The wall time includes a fixed launch cost (trivial MPI program: 0.11 s at p = 1 to 0.21 s at
+  p = 32), which caps the wall-time ratio of jobs that run under one second (floor 0.39 for those
+  39 jobs); a program-internal timer avoids this.
+- `madvise(MADV_POPULATE_READ)` over the reader's own byte chunk of the memory-mapped file: io
+  0.991, inside the spread of the io timer between two binaries with identical reader code.
+- Sorting nodes by degree on packed (degree, node) keys, retested after the layout fix: the
+  refinement loss of the first test was the layout draw, but coarsening is still 1.3% slower
+  (geomean): the key vector and two copy passes cost more than the cheaper comparisons save.
+- Not zero-filling the node data array (much smaller than the edge array): io in noise, contraction
+  1.006 (the per-node branch in the builder costs more than the fill).
+- Not zero-filling the contraction's receive buffers: contract 1.002; short-lived buffers of
+  moderate size come from already mapped pages.
+- Inlining the key into the probe slots of an insertion-ordered hash map whose lookups come in
+  runs: the side arrays it replaces were cache-resident, so the 4x larger slots only cost.
+- valgrind/callgrind failed (illegal instruction) on the `-march=native` build; a separate
+  profiling-only build without native flags was needed.
+
+## Code Example
+
+```cpp
+// LP edge loop: draw the tie-break exactly as before, then test cheap conditions first
+bool improvement = cur_value > max_value;
+improvement |= cur_value == max_value && random_functions::nextBool();
+if (!improvement) continue;                       // nothing below has side effects
+bool cycle = !config.vcycle || G.getSecondPartitionIndex(node) == G.getSecondPartitionIndex(target);
+bool balancing = own_block_balanced || cur_block != old_block;
+if (!(cycle && balancing)) continue;
+if (cur_block == old_block || G.getBlockSize(cur_block) + node_weight <= cluster_upperbound) {
+        max_value = cur_value; max_block = cur_block;
+}
+```
+
+## Environment
+
+C++ (GCC 13, -O3 -march=native), Open MPI 5, one process per core, Intel Xeon w5-3435X
+(16 cores / 32 threads). Graphs from SNAP, DIMACS 10 and the Florida collection (METIS text).
