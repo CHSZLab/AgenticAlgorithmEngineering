@@ -610,6 +610,20 @@ time changed the target.
   a gate must resolve the effect it judges; check the measure's own spread on the base before using
   it as a threshold, and count what can be counted.
 
+### Phase 3: a bimodal job defeats a fixed guard (round 58)
+
+- The halved send-list reuse was re-entered under the replaced memory rule. This time a different
+  mesh job stopped it: peak memory 1.034 against the 1.03 guard. That job's peak memory is bimodal
+  (runs land near 397 or near 408 MB; b91 alone spanned 3.4% over three rounds), and in this round
+  all three new runs landed high while two of three base runs landed low. A control paired per
+  repetition did not catch it because base and control fell on the same level in every repetition.
+  Exact accounting on the same job showed 2 MiB of lists on the measured process (0.5% of its peak)
+  against a 13 MB median rise, so the rise was noise. The change was discarded as the rule stood,
+  and the memory gate went to the owner.
+- Lesson: before fixing any threshold on a measured quantity, measure the base alone with enough
+  repetitions to see its distribution (spread, and whether it is bimodal); three repetitions cannot
+  show a bimodal distribution, and a guard inside the noise rejects changes at random.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -681,6 +695,7 @@ time changed the target.
 | 55 | refinement LP skip gated on one process only (fourth attempt) | refine 0.909, p1 part 0.926 (timed) | part 0.9907; unseen 1.015 | discard (tie band; placement on p > 1) |
 | 56 | bundle: one-PE refinement skip + ghost send-list reuse on V-cycle restarts | part 0.974, contract 0.953 (screen) | peak RSS +2.2% on one mesh job | discard (memory rule) |
 | 57 | send lists halved (32-bit local ids) | part 0.973, contract 0.957 (screen) | peak RSS 1.021 on one mesh job, inside its 2.8% base spread | discard (old memory rule); rule replaced |
+| 58 | round-57 code re-entered under the new memory rule | part 0.968, contract 0.953 (screen); accounting 0.5% | peak RSS guard 1.034 on a bimodal mesh job | discard (guard); gate to the owner |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
