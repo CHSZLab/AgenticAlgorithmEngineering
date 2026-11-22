@@ -597,6 +597,19 @@ time changed the target.
   discard, no rerun. Lesson: a cache that lives for the whole run must be sized against the memory
   rule at design time, from the buffer it mirrors; store the narrowest index type and reserve exactly.
 
+### Phase 3: a peak-memory median cannot resolve 1% (round 57)
+
+- Storing the reused send lists as 32-bit local ids halved them, and on the social graph with 16
+  processes the peak-memory rise fell from 1.4% to 0.8% as predicted. The mesh job that had stopped
+  the previous round stopped again at 1.021, but its three base runs spanned 2.8% and its base median
+  moved by 5 MB between the two rounds: the expected 1.1% rise was below the noise of the measure.
+  The change was discarded under the rule as it stood.
+- The memory rule was replaced for all later experiments: exact accounting in the check build (the
+  bytes the change keeps allocated, per rank, at most 1.5% of that rank's base peak memory) plus peak
+  memory as a coarse guard (stop above 3%, or above 2% when beyond the control's spread). Lesson:
+  a gate must resolve the effect it judges; check the measure's own spread on the base before using
+  it as a threshold, and count what can be counted.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -667,6 +680,7 @@ time changed the target.
 | 55 | contraction build mechanism by offline replay (diag) | latency-bound dependent loads; reserve ceiling about 1% | n/a | closed (no lever at 2%) |
 | 55 | refinement LP skip gated on one process only (fourth attempt) | refine 0.909, p1 part 0.926 (timed) | part 0.9907; unseen 1.015 | discard (tie band; placement on p > 1) |
 | 56 | bundle: one-PE refinement skip + ghost send-list reuse on V-cycle restarts | part 0.974, contract 0.953 (screen) | peak RSS +2.2% on one mesh job | discard (memory rule) |
+| 57 | send lists halved (32-bit local ids) | part 0.973, contract 0.957 (screen) | peak RSS 1.021 on one mesh job, inside its 2.8% base spread | discard (old memory rule); rule replaced |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
