@@ -442,6 +442,32 @@ time changed the target.
   ghost (and first checks the stored coarse node ids against the owners' with one extra
   exchange) proves identity directly; it found 0 differences over all levels of 8 jobs.
 
+### Phase 3: an input split that also counts far edges (round 50)
+
+- On meshes stored in an order where the first processes own the outer layer, the first ranks hold
+  9 to 14 times the ghosts of the others with equal nodes and edges (delaunay_n22 p16: rank 0 1.25M
+  ghosts on 262k nodes, ranks 4 to 15 about 89k), on every level. Per-rank coarsening compute fits
+  (n + m) + 3 x ghosts. Adding 3 x the entries that leave the provisional range to the split cost,
+  estimated from a sampled sub-chunk per group, cut the mesh part time by 5 to 15% (delaunay_n22
+  0.875, hugetrace 0.845) and was quality neutral (Q 1.0000 +- 0.0005).
+- It was still discarded twice, both times on io, the second headline. Ungated (1 in 32) it changed
+  every social job's coarse graph and lost the unseen set (one job's initial partitioning hit an
+  unlucky coarse graph). Gated on the sampled per-process max/mean of leaving entries (> 1.85, fixed
+  offline: meshes about 2.0 to 2.4, social at most 1.73 with a 1-in-64 sample) it fixed the unseen
+  set but lost the full-set io band (1.016): the sample and gate cost about 0.02 s on every job with
+  p > 1, and the io band is a sum over 150 such jobs. An untimed per-rank parse time (0.004 to
+  0.011 s) understated that cost. Any reader-side estimate must be nearly free or come from data the
+  reader already produces.
+- Gate thresholds chosen offline transfer badly to inputs not in the design set: the mesh gate also
+  fired on web graphs, random geometric graphs and a packing mesh (77 of 180 jobs instead of 30).
+  Run the gate on every input of every set before the expensive stages, and report where it fires.
+- Reader io follows the bytes of the slowest rank, not its entries: on uk-2002 the ids grow along the
+  file, so the last rank parses 338 MB against a mean of 278 MB (1.13 vs 0.74 s) and sets the io
+  time. Splits that balance entries and lines (060, 087, 088) move io by luck: the same idea gave
+  +3.5% (1 in 32) and -2.0% (1 in 64) on that input, depending on where the boundaries fell.
+- Do not project a discard from a related variant's per-job numbers: the 088 io projection reused
+  087's io and was refuted by a direct untimed measurement on the critical input.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -498,6 +524,9 @@ time changed the target.
 | 48 | global ghost label update: prefetch ring over the received pairs (project) | project 0.660 | part 0.979 (gm 0.987); unseen 0.988 | keep (identical output) |
 | 49 | ghost labels from the projection's request round (sort of the ghosts by coarse node) | diag: project 1.06 (enwiki), 1.75 (delaunay) | n/a | replaced by the hash version |
 | 49 | the same with a hash table of distinct coarse nodes (no sort), barrier kept | project 0.514 | part 0.979 (gm 0.981); unseen 0.980 | keep (identical output) |
+| 50 | input split cost + 3 x sampled entries leaving the provisional range, 1 in 32, ungated | mesh part 0.80 to 0.82, io 0.978 | part 0.977; unseen 1.036, unseen io 1.022 | discard (unseen io band) |
+| 50 | the same gated on sampled leaving max/mean > 1.85, 1 in 64 | mesh part 0.950 (delaunay_n22 0.875) | part 0.982; io 1.016; unseen 0.992 | discard (full-set io band) |
+| 50 | coarsening LP: cache hint for the hash slot of the label four edges ahead (degree > 16) | coarsen 0.975 (enwiki only), 1.01 to 1.05 elsewhere | untimed A/B neutral (8 jobs 75.0 to 74.9 s) | discard (no timed run) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
@@ -553,6 +582,10 @@ Per-phase noise: see the keep rule above.
   moderate size come from already mapped pages.
 - Inlining the key into the probe slots of an insertion-ordered hash map whose lookups come in
   runs: the side arrays it replaces were cache-resident, so the 4x larger slots only cost.
+- LP hash table misses only pay off when the table is far larger than the cache. Both fixes of the
+  same misses (sizing the table prefix per node degree, and a cache hint for the slot of the label
+  four edges ahead) gained 2.5% coarsening on enwiki (max degree 432260, 16 MiB table) and cost 1 to
+  3% on inputs whose table fits the cache (youtube 1 MiB and smaller); the net was inside the band.
 - valgrind/callgrind failed (illegal instruction) on the `-march=native` build; a separate
   profiling-only build without native flags was needed.
 
