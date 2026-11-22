@@ -525,6 +525,21 @@ time changed the target.
   every caller; to change one phase only, give that phase its own instance and check with a
   disassembly that the other phase's code is unchanged.
 
+### Phase 3: identical code, different placement (round 53)
+
+- The coarsening gain of round 52 was retried with the other phase's code left exactly as it was:
+  the list path in a coarsening-only template instance and separate functions, the new members at
+  the end of the class. A disassembly check confirmed that every function the refinement LP reaches
+  is instruction-identical to the base (only the caller that inlines both LP setups differs). The
+  coarsening gain stayed (coarsening 0.947, part 0.982 on 10 screen jobs), the two earlier refinement
+  losses vanished (1.036 to 1.006, 1.063 to 1.008), but one 16-process job still read 1.017 against a
+  control spread of 1.012, while initial partitioning and projection, whose code is untouched, moved
+  by 2 to 3.5%. With identical instructions this is placement, and code shape cannot remove it.
+- With 3 repetitions, a per-job stop rule at 1.01 has a real false-stop rate (here it fired on
+  overlapping ranges at part 0.982). Use a per-job threshold of 1.02 plus a phase-total threshold of
+  1.01, each also above a base-versus-base control, and fix them before the data; do not rerun after
+  a stop.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -590,6 +605,7 @@ time changed the target.
 | 51 | ghost exchange: send completion deferred one round (third buffer) | coarsen 0.988 (untimed) | part 0.994 (untimed) | discard (peak RSS +6%) |
 | 51 | refinement LP skips provably converged nodes; then gated on the non-interface share | refine p1/packing 0.54 to 0.61, p16 1.02 to 1.14 | untimed part 0.992 / 0.993 | discard (16-process rule) |
 | 52 | coarsening ghost sends from per-node lists of adjacent processes, freed after the coarsening LP | coarsen 0.951, refine 1.036 (p1) / 1.063 (youtube p16) | untimed part 0.974 | discard (refinement stop rule; crash not reproduced in 1040 runs) |
+| 53 | the same with the refinement code instruction-identical to the base (coarsening-only instance) | coarsen 0.947, refine 1.011 (one job 1.017) | untimed part 0.982 | discard (per-job refinement rule; placement) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
