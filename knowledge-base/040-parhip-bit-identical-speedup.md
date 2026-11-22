@@ -578,6 +578,25 @@ time changed the target.
   is real. Bundle such items into one change with one placement cost, and check each item's own
   share so that none rides along.
 
+### Phase 3: a bundle of parked items, stopped by memory (round 56)
+
+- The parked output-identical items were bundled into one change with one placement cost: the
+  one-process refinement skip, plus reuse of the contraction's ghost send lists when the same input
+  graph is contracted again at each V-cycle restart (the graph object is the same across restarts,
+  and its adjacency is fixed after construction, so the lists never go stale). The edge-map reserve
+  was measured again in the form that can actually be built (vectors only, bounded by the edge
+  count); it was worth about 0.3% and was dropped rather than carried as a passenger.
+- Moving the new code out of the contraction file into its own translation unit was again needed
+  for instruction identity: one extra call to a small vector helper made the compiler stop inlining
+  it into an unrelated function of the same file. The objdump check was extended to resolve moved
+  data references symbolically (named object and offset, or the relocation of a GOT slot), because
+  vtable and GOT bytes hold relocated code addresses; a positive and a negative control validated it.
+- The screen showed the largest untimed gain so far (part 0.974, contraction 0.953, about 0.8 s of
+  contraction on the large social graph with 16 processes), but the stored lists cost about 7 MB per
+  process and one mesh job crossed the 2% peak-memory stop (1.022). The rule was applied as fired:
+  discard, no rerun. Lesson: a cache that lives for the whole run must be sized against the memory
+  rule at design time, from the buffer it mirrors; store the narrowest index type and reserve exactly.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -647,6 +666,7 @@ time changed the target.
 | 54 | refinement LP skip in its own source file, gated on the non-interface share (base code identical) | refine 0.896 (p1/p4 0.55 to 0.59), hugetrace p16 1.028 | untimed part 0.985 | discard (per-job refinement rule) |
 | 55 | contraction build mechanism by offline replay (diag) | latency-bound dependent loads; reserve ceiling about 1% | n/a | closed (no lever at 2%) |
 | 55 | refinement LP skip gated on one process only (fourth attempt) | refine 0.909, p1 part 0.926 (timed) | part 0.9907; unseen 1.015 | discard (tie band; placement on p > 1) |
+| 56 | bundle: one-PE refinement skip + ghost send-list reuse on V-cycle restarts | part 0.974, contract 0.953 (screen) | peak RSS +2.2% on one mesh job | discard (memory rule) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
