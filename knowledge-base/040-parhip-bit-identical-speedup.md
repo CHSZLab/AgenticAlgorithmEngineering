@@ -468,6 +468,47 @@ time changed the target.
 - Do not project a discard from a related variant's per-job numbers: the 088 io projection reused
   087's io and was refuted by a direct untimed measurement on the critical input.
 
+### Phase 3: contraction arithmetic, round coupling and skipping converged nodes (round 51)
+
+- Contraction redistribution: replacing a modulo and a division in the per-triple owner and order
+  computation by multiply-based exact forms (fastmod, 32-bit fastdiv), prefetching the edge map slot
+  8 triples ahead in the insert loop and moving received messages instead of copying them gave
+  contraction 0.939 and part 0.985 on the full set, output identical. Four follow-ups on the
+  contraction build (key next to the id in the probe slot, per-node aggregation before the edge map,
+  two-stage prefetch, coarse ranges balanced on received edges) each lost or missed a fixed gate in an
+  untimed A/B before any timed run: the remaining build time is a random scatter into the edge map,
+  and what is left in the redistribution is mostly waiting at its Allreduce and final barrier.
+- An offline cost model must be checked within a job before it projects a gain. A per-rank LP cost
+  fitted across jobs (R2 0.96) had a negative R2 inside every job, because the sweep timer contains
+  the waiting inside the sweep; model per-rank compute on the node-scan timer. The same input-split
+  change, judged on measurement, balanced the scan (max-rank scan 0.94) but not the waits, and lost
+  on a packing mesh at 32 processes (1.107).
+- Balancing totals does not balance rounds. A per-round record of every ghost exchange (gap, pack,
+  receive, probe, Waitall) showed that the LP phase wall equals the sum of per-round maxima, not the
+  maximum of per-rank sums (enwiki 16 processes: 14.8 vs 14.0 s in coarsening, 7.6 vs 6.4 s in
+  refinement). A rank finishing early waits in every round, so moving work between ranks without
+  changing each round's maximum does nothing.
+- Deferring the send completion by one round (a third send buffer) reached only a third of what a
+  rendezvous model predicted: the removed Waitall time came back as probe time (enwiki coarsening:
+  Waitall 2.1 to 0.0 s, probe 0.2 to 1.9 s per rank). Most of the coupling is data dependence on the
+  slowest sender, not the send protocol. The extra buffer also raised peak memory by up to 6%.
+- An output-identical skip for converged nodes: in refinement a node with no ghost neighbour whose
+  last scan saw only its own label and drew no random number, and whose local neighbours have not
+  moved since, provably stays without consuming randomness, so its scan can be skipped (its round
+  work still counted). A counting diag that scanned every would-skip node anyway found 0
+  violations. The skip saved about half of refinement on one-process and packing-mesh jobs (part
+  0.84 to 0.93), but cost 2 to 14% of refinement at 16 processes, where almost every node with edge
+  work has ghost neighbours. Gating it on the share of non-interface nodes did not bring the 16-process
+  jobs within 1%; part of the remaining loss was code layout of the extra loop instance. Require the
+  predicate to be the node's own label: a single foreign label may have been refused by a size limit
+  that loosens later.
+- Untimed screens on a shared host move 2 to 3% on unchanged code (initial partitioning, projection),
+  so a 1% screen rule cannot be resolved there. Run a base-versus-base control alternated in the same
+  round on the same jobs, and stop only if a ratio exceeds both the rule and the control's spread.
+- Separate a regression's causes with one binary and run-time modes before redesigning: off (same
+  binary, no new code path), off plus the new allocation, and on. Here the allocation cost nothing,
+  the predicate cost 1 to 5% on most losing jobs, and on one job the off mode alone was 7% slower.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -527,6 +568,11 @@ time changed the target.
 | 50 | input split cost + 3 x sampled entries leaving the provisional range, 1 in 32, ungated | mesh part 0.80 to 0.82, io 0.978 | part 0.977; unseen 1.036, unseen io 1.022 | discard (unseen io band) |
 | 50 | the same gated on sampled leaving max/mean > 1.85, 1 in 64 | mesh part 0.950 (delaunay_n22 0.875) | part 0.982; io 1.016; unseen 0.992 | discard (full-set io band) |
 | 50 | coarsening LP: cache hint for the hash slot of the label four edges ahead (degree > 16) | coarsen 0.975 (enwiki only), 1.01 to 1.05 elsewhere | untimed A/B neutral (8 jobs 75.0 to 74.9 s) | discard (no timed run) |
+| 51 | contraction redistribution: multiply-based modulo and division, insert prefetch, moved messages | contract 0.939 | part 0.985 (gm 0.987) | keep (identical output) |
+| 51 | contraction build: wide probe slot; per-node aggregation; two-stage prefetch; ranges on received edges | untimed contract 0.976 / 1.020 / 0.977; offline 1 to 2% | n/a | discard (missed the fixed gates) |
+| 51 | input split on entries + lines (node term 1) | max-rank scan 0.94, io 0.93 (10 jobs) | untimed part 1.001; packing p32 1.107 | discard (stop rule) |
+| 51 | ghost exchange: send completion deferred one round (third buffer) | coarsen 0.988 (untimed) | part 0.994 (untimed) | discard (peak RSS +6%) |
+| 51 | refinement LP skips provably converged nodes; then gated on the non-interface share | refine p1/packing 0.54 to 0.61, p16 1.02 to 1.14 | untimed part 0.992 / 0.993 | discard (16-process rule) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
