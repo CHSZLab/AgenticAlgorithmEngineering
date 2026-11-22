@@ -557,6 +557,27 @@ time changed the target.
   follow the quantity that pays (the skippable share), not a proxy that happens to correlate with it
   on the target jobs.
 
+### Phase 3: the contraction build is latency-bound, and placement sets a floor (round 55)
+
+- Hardware counters are not available to unprivileged users on the benchmark host, so the
+  contraction build loop was measured by replay: its input was dumped per call and the loop re-run
+  offline in variants (full, scan only, map only, hits only, an L2-sized key set), single-core and
+  four at once to share memory bandwidth as four ranks do. The loop is latency-bound: chains of
+  dependent loads (coarse node of the target, slot, id, key arrays, weight). Where the edge map
+  exceeds L3 (social graph, four ranks), hits pay about half a memory latency per cut edge; where
+  keys repeat (mesh, one rank), the chain's cache latency plus L3 contention with the coarse-node
+  array dominate. It is not bandwidth-bound (at most about 1.5 GB/s per core, unchanged with four
+  replays at once) and not compute-bound. This explains why earlier fat slots, fewer calls and
+  prefetching did not pay. The remaining lever found, reserving the map's per-key arrays up front,
+  has a measured ceiling of about 1% of the part time and is parked.
+- The converged-node skip, gated on a single process only, passed every untimed rule (refinement
+  0.909, part 0.983 on the screen) and kept its gain in the timed run (single-process part 0.926),
+  but multi-process jobs running identical instructions lost 0.5 to 0.8% and the full-set part
+  ended at 0.9907, inside the tie band. On this binary, placement costs about 0.5 to 1% on untouched
+  jobs per change, so a single output-identical item below about 2% cannot pass even when its gain
+  is real. Bundle such items into one change with one placement cost, and check each item's own
+  share so that none rides along.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -624,6 +645,8 @@ time changed the target.
 | 52 | coarsening ghost sends from per-node lists of adjacent processes, freed after the coarsening LP | coarsen 0.951, refine 1.036 (p1) / 1.063 (youtube p16) | untimed part 0.974 | discard (refinement stop rule; crash not reproduced in 1040 runs) |
 | 53 | the same with the refinement code instruction-identical to the base (coarsening-only instance) | coarsen 0.947, refine 1.011 (one job 1.017) | untimed part 0.982 | discard (per-job refinement rule; placement) |
 | 54 | refinement LP skip in its own source file, gated on the non-interface share (base code identical) | refine 0.896 (p1/p4 0.55 to 0.59), hugetrace p16 1.028 | untimed part 0.985 | discard (per-job refinement rule) |
+| 55 | contraction build mechanism by offline replay (diag) | latency-bound dependent loads; reserve ceiling about 1% | n/a | closed (no lever at 2%) |
+| 55 | refinement LP skip gated on one process only (fourth attempt) | refine 0.909, p1 part 0.926 (timed) | part 0.9907; unseen 1.015 | discard (tie band; placement on p > 1) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
