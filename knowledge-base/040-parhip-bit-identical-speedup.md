@@ -540,6 +540,23 @@ time changed the target.
   1.01, each also above a base-versus-base control, and fix them before the data; do not rerun after
   a stop.
 
+### Phase 3: a skip in its own translation unit, and a gate that admits the wrong jobs (round 54)
+
+- The converged-node skip of round 51 was retried with the base code left untouched: the skipping
+  loop and its gate in a new source file listed last in the build, the header only declaring the
+  gate. Two shapes inside the header failed the disassembly check first (a second template
+  parameter, and a separate loop behind a non-inlined gate): both changed the register allocation
+  of the unchanged loop instances, because inlining is decided per translation unit. Only the
+  separate file kept every loop instance instruction-identical and at its old address; the
+  exchange functions moved by 16 bytes, so data references must be checked for pointing to the same
+  bytes rather than compared by offset.
+- The skip itself works: refinement 0.55 to 0.59 on one- and four-process mesh and social jobs,
+  part 0.83 to 0.93 there, refinement total 0.896, part 0.985. But the gate (at least half of the
+  local nodes without a ghost neighbour) also admits mesh jobs at 16 processes, where few nodes can
+  be skipped; there the flag upkeep cost 2.8% of refinement and the stop rule fired. A gate should
+  follow the quantity that pays (the skippable share), not a proxy that happens to correlate with it
+  on the target jobs.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -606,6 +623,7 @@ time changed the target.
 | 51 | refinement LP skips provably converged nodes; then gated on the non-interface share | refine p1/packing 0.54 to 0.61, p16 1.02 to 1.14 | untimed part 0.992 / 0.993 | discard (16-process rule) |
 | 52 | coarsening ghost sends from per-node lists of adjacent processes, freed after the coarsening LP | coarsen 0.951, refine 1.036 (p1) / 1.063 (youtube p16) | untimed part 0.974 | discard (refinement stop rule; crash not reproduced in 1040 runs) |
 | 53 | the same with the refinement code instruction-identical to the base (coarsening-only instance) | coarsen 0.947, refine 1.011 (one job 1.017) | untimed part 0.982 | discard (per-job refinement rule; placement) |
+| 54 | refinement LP skip in its own source file, gated on the non-interface share (base code identical) | refine 0.896 (p1/p4 0.55 to 0.59), hugetrace p16 1.028 | untimed part 0.985 | discard (per-job refinement rule) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
