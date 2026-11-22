@@ -509,6 +509,22 @@ time changed the target.
   binary, no new code path), off plus the new allocation, and on. Here the allocation cost nothing,
   the predicate cost 1 to 5% on most losing jobs, and on one job the off mode alone was 7% slower.
 
+### Phase 3: a parked crash retested, and a gain lost to code placement (round 52)
+
+- A change parked after one crash and one hang in a packed, oversubscribed identity batch (per-node
+  lists of adjacent processes for the coarsening ghost sends) was first read against the symptoms:
+  the lists depend only on graph structure fixed at build, they are never handed to MPI (the pairs
+  are copied into the send buffers), and the exchange sends one message per adjacent process per
+  round whatever the buffers hold, so no list error can change the message count. Then 20 packed
+  batches of the base and the change, alternated, with core dumps on (1040 runs) were all clean on
+  both binaries: the failure did not reproduce and is not attributable to the change.
+- The coarsening gain was real (coarsening 0.951, enwiki 16 processes -1.5 s of 15 s, part 0.974 on
+  10 screen jobs), but refinement, which ran the unchanged edge-scan path, lost 3.6% on a one-process
+  job (where the new code never runs) and 6.3% on youtube at 16 processes, tight across reps and well
+  outside a base-versus-base control. A shared inline function with one new branch moves the code of
+  every caller; to change one phase only, give that phase its own instance and check with a
+  disassembly that the other phase's code is unchanged.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -573,6 +589,7 @@ time changed the target.
 | 51 | input split on entries + lines (node term 1) | max-rank scan 0.94, io 0.93 (10 jobs) | untimed part 1.001; packing p32 1.107 | discard (stop rule) |
 | 51 | ghost exchange: send completion deferred one round (third buffer) | coarsen 0.988 (untimed) | part 0.994 (untimed) | discard (peak RSS +6%) |
 | 51 | refinement LP skips provably converged nodes; then gated on the non-interface share | refine p1/packing 0.54 to 0.61, p16 1.02 to 1.14 | untimed part 0.992 / 0.993 | discard (16-process rule) |
+| 52 | coarsening ghost sends from per-node lists of adjacent processes, freed after the coarsening LP | coarsen 0.951, refine 1.036 (p1) / 1.063 (youtube p16) | untimed part 0.974 | discard (refinement stop rule; crash not reproduced in 1040 runs) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
