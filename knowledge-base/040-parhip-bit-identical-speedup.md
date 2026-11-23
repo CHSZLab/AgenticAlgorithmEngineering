@@ -753,6 +753,24 @@ time changed the target.
   units in the order they were kept, so rebases keep earlier layouts. A chained headline must list
   every factor and the same statistic on both sides.
 
+### Phase 3: preparing the pull request, and a build gap (round 63)
+
+- The branch was rebased onto the current upstream master without conflicts, and the full build
+  matrix of the project was run on it: the build script in six variants (two compilers, the Python
+  module, the deterministic and the non-MPI builds), the unit test, install and link of the
+  interface three ways (static, shared, pkg-config) with equal cuts, and the example program.
+- The first run failed to link three helper tools (graph converters). They compile their own copy
+  of the graph reader, and the round-61 change had added its new source file only to the
+  partitioner's source list. Every check of the campaign built only the partitioner target, so
+  none saw it. The fix adds the file to the two other lists; the partitioner binaries stayed
+  byte-identical.
+- Partitions of the rebased branch are byte-identical to the branch before the rebase, so the
+  upstream commits do not change the output.
+- Process rule from here on: every keep also builds the full default target set once (the
+  project's own build script), not only the target that is timed.
+- Lesson: a change that adds a source file must add it to every target that compiles the files
+  calling it; check with the full build, not only the benchmarked binary.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -833,6 +851,7 @@ time changed the target.
 | 61 | reader: transparent huge pages for the surely written part of the target and edge arrays (TU linked last) | io 0.855 (unseen 0.870) | part 0.994; peak RSS 0.93 to 1.03 per job | keep |
 | 62 | diagnostics: contraction first-touch bytes, reader faults outside the advised ranges, TLB kernel without perf | bound 0.9895; removable 0.61 s; prediction 1.55% vs 0.56% measured | n/a | all closed by their rules |
 | 62 | round-58 bundle kept by owner decision (guard fired only on a bimodal job), rebased onto round 61 | part 0.982 (p1 0.922, refine 0.907) | identity, check build and memory gate passed again | keep |
+| 63 | PR preparation: rebase onto upstream, full build matrix; missing source file in two tool targets fixed | n/a | partitioner binaries byte-identical after the fix; outputs identical after the rebase | build rule added |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
