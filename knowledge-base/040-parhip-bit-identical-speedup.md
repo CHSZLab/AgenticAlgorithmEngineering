@@ -624,6 +624,36 @@ time changed the target.
   repetitions to see its distribution (spread, and whether it is bimodal); three repetitions cannot
   show a bimodal distribution, and a guard inside the noise rejects changes at random.
 
+### Phase 3: base memory noise, and a deterministic receive lag that loses downstream (round 59)
+
+- Before any further memory threshold, the base binary was run alone, 10 times per job, on the 10
+  screen jobs and on the social job a later guard fired on (peak memory of the largest process,
+  untimed). Six jobs vary by at most 1.8%. Four vary by 2.6 to 4.1%, and three of these are
+  bimodal: a mesh job at 16 processes lands on 386 or 399 MB (5 runs each), another mesh job on
+  300 or 306 MB, and the social job (as-skitter, 16 processes) on 103 or 111 MB (7 and 3 runs,
+  range 9.7%). On that last job a 3-run median of the base against itself exceeds a 1.05 guard
+  about once in seven comparisons. The largest process is the same in every run of a job, and its
+  peak equals what the launcher reports.
+- The last output-changing idea from the round-model diagnostic was then tested. In the
+  coarsening label propagation, every process integrated its neighbours' ghost labels two rounds
+  late instead of one, with five send buffer sets in rotation and each round's sends completed
+  four rounds later. This lets a process run up to two rounds ahead of its slowest neighbour. The
+  result stays deterministic: the lag is a fixed number of rounds, not a timing decision.
+  Identity, quality and balance all passed. The cut was unchanged within its error
+  (0.99977 +- 0.00048 against the base), better than the prior estimate of +0.2 to +0.5%.
+  Exact accounting of the extra buffers stayed below 0.5% of each process's peak.
+- Timed, the coarsening phase gained as the round model projected (social job at 16 processes:
+  -0.37 s of 15.3 s). But the full set got slower: part time 1.005, unseen inputs 1.041. The
+  changed coarse hierarchy made initial partitioning (+3.8%), contraction (+1.4%) and projection
+  (+3.0%) more expensive than the coarsening saving. Peak memory also rose by up to 15% on the
+  full set and 40% on one unseen job, far beyond the counted buffers. The change was discarded.
+- Lessons: an output-changing coarsening change must be judged on the whole pipeline, since its
+  phase gain can be eaten downstream. Exact accounting of the change's own allocations does not
+  see memory held inside the message layer. A plausible but unverified reading: with more
+  messages in flight, the receiver's MPI buffers them before the receive is posted. So any change
+  that raises the number of messages in flight needs a measured peak-memory check before the
+  timed run, in addition to the accounting.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -696,6 +726,8 @@ time changed the target.
 | 56 | bundle: one-PE refinement skip + ghost send-list reuse on V-cycle restarts | part 0.974, contract 0.953 (screen) | peak RSS +2.2% on one mesh job | discard (memory rule) |
 | 57 | send lists halved (32-bit local ids) | part 0.973, contract 0.957 (screen) | peak RSS 1.021 on one mesh job, inside its 2.8% base spread | discard (old memory rule); rule replaced |
 | 58 | round-57 code re-entered under the new memory rule | part 0.968, contract 0.953 (screen); accounting 0.5% | peak RSS guard 1.034 on a bimodal mesh job | discard (guard); gate to the owner |
+| 59 | diagnostic: peak memory of the base alone, 10 runs on 11 jobs | ranges 0.03 to 9.7%; three jobs bimodal | n/a | input for memory guards |
+| 59 | coarsening LP: deterministic receive lag of 2 rounds, sends completed 4 rounds later | coarsen 0.992 (social p16 -0.37 s); ip 1.038, contract 1.014 | part 1.005; unseen 1.041; cut 0.9998; peak RSS up to +15% (unseen +40%) | discard (keep rule; memory guard) |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
