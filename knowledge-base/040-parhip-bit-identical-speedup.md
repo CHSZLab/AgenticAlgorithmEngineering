@@ -771,6 +771,25 @@ time changed the target.
 - Lesson: a change that adds a source file must add it to every target that compiles the files
   calling it; check with the full build, not only the benchmarked binary.
 
+### Phase 3: keeping freed memory in the heap, and the end of the output-identical line (round 64)
+
+- The pull request with all kept changes is open: https://github.com/KaHIP/KaHIP/pull/189.
+- Last output-identical candidate: avoid first-touch page faults by keeping freed memory in the
+  malloc heap, so later levels reuse pages that are already mapped. Checked with no code, through
+  the glibc tunables that a `mallopt` call would set (`mmap_max = 0`, `trim_threshold = INT_MAX`).
+  `M_MMAP_THRESHOLD` alone does not do it: glibc caps it at 32 MiB, so larger arrays stay fresh
+  mappings.
+- Outputs stayed identical. Most faults went away (coarsening 82 to 100%, contraction 61 to 96%),
+  and the projected part was 0.978. But peak memory rose on 29 ranks by more than 1.5%, by up to
+  19.5%, because the freed temporaries stay resident at the peak. Closed by the memory rule.
+  Reusing only the contraction temporaries would project 0.9855, just above the bar, and buffers
+  kept across levels would count against the memory gate.
+- With this, the output-identical line in the parallel code is exhausted at a bar of 1.5% part
+  under the memory gate. The remaining levers change the output or lie in the sequential library.
+- Lesson: a fault-avoidance idea can be measured for free through allocator tunables before any
+  code is written; check the peak memory in the same run, because reuse and peak pull in opposite
+  directions.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -852,6 +871,7 @@ time changed the target.
 | 62 | diagnostics: contraction first-touch bytes, reader faults outside the advised ranges, TLB kernel without perf | bound 0.9895; removable 0.61 s; prediction 1.55% vs 0.56% measured | n/a | all closed by their rules |
 | 62 | round-58 bundle kept by owner decision (guard fired only on a bimodal job), rebased onto round 61 | part 0.982 (p1 0.922, refine 0.907) | identity, check build and memory gate passed again | keep |
 | 63 | PR preparation: rebase onto upstream, full build matrix; missing source file in two tool targets fixed | n/a | partitioner binaries byte-identical after the fix; outputs identical after the rebase | build rule added |
+| 64 | keep freed memory in the malloc heap (glibc tunables, no code) | faults avoided: coarsen 0.82 to 1.00, contract 0.61 to 0.96; projected part 0.978 | peak memory up to +19.5% per process (29 above 1.5%) | closed (memory rule); output-identical line exhausted |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
