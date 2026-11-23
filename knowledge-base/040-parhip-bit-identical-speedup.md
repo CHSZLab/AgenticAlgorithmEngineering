@@ -654,6 +654,35 @@ time changed the target.
   that raises the number of messages in flight needs a measured peak-memory check before the
   timed run, in addition to the accounting.
 
+### Phase 3: adjacent-process lists for coarsening sends, stopped by exact memory accounting (round 60)
+
+- Coarsening LP sends a moved interface node's new label to every adjacent process. The base
+  finds these processes by scanning the node's edges at every move. Two earlier attempts
+  (rounds 50 and 51) built per-node lists of the adjacent processes instead. They saved about 5%
+  of the coarsening time, but they changed or moved the refinement code and were stopped by its
+  noise rule. This time the list path was put in its own translation unit linked last, as a copy
+  of the coarsening sweep. Every other function stayed instruction-identical and at the same
+  address (checked by a closure compare of the binaries). The lists were local to one coarsening
+  call and freed after it, and the messages were the same bytes by construction.
+- Identity passed (deterministic twice, clang, sanitizers), and a check build that compared every
+  list with the edge scan and every round's pairs per process found no mismatch on 11 jobs.
+  The memory gate then stopped it before any timing. Exact accounting of the lists peaked at
+  2.37% of one process's peak memory, above the 1.5% limit, on 25 processes. The accounting
+  counted the build's transient peak: a vector grown by push_back holds its old and new blocks
+  at once during each doubling.
+- A pre-registered follow-up with an exact-size two-pass build (count, then fill) was judged
+  offline first. The per-process node and list counts were computed from the input files with
+  the base's input split. Replaying the round's accounting from them reproduced the logged peak
+  of all 108 processes exactly. The projection still reached 1.74% (and 1.20 to 1.25% on six
+  processes of a mesh job), above the 1.2% margin set for it. Here the 4 bytes of offsets per
+  local node dominate, on processes whose own peak memory is small. The idea was closed with no
+  timing data.
+- Lessons: under an exact-bytes memory gate, per-node side structures of 4 to 6 bytes per node
+  are at the limit on small processes. Project the gate offline from the input split before
+  writing code; a replay that reproduces the logged accounting exactly makes the projection
+  trustworthy. Give a diagnostic's own assertions a precondition. Here one fired on every push,
+  not only on reallocating ones, and cost a rerun (not counted as a failed rule).
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -728,6 +757,8 @@ time changed the target.
 | 58 | round-57 code re-entered under the new memory rule | part 0.968, contract 0.953 (screen); accounting 0.5% | peak RSS guard 1.034 on a bimodal mesh job | discard (guard); gate to the owner |
 | 59 | diagnostic: peak memory of the base alone, 10 runs on 11 jobs | ranges 0.03 to 9.7%; three jobs bimodal | n/a | input for memory guards |
 | 59 | coarsening LP: deterministic receive lag of 2 rounds, sends completed 4 rounds later | coarsen 0.992 (social p16 -0.37 s); ip 1.038, contract 1.014 | part 1.005; unseen 1.041; cut 0.9998; peak RSS up to +15% (unseen +40%) | discard (keep rule; memory guard) |
+| 60 | coarsening sends from per-node adjacent-process lists, in a TU linked last (same messages) | no timing (stopped before the screen) | exact list accounting 2.37% of a process peak (limit 1.5%) | discard (memory gate (a)) |
+| 60 | same with an exact-size two-pass build, projected offline (replay exact on 108 processes) | n/a | projected 1.74% (margin 1.2%) | discard offline; idea closed |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
