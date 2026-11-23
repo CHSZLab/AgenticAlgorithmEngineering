@@ -723,6 +723,36 @@ time changed the target.
   standalone bound measured with many processes at once can underestimate the gain inside the
   program.
 
+### Phase 3: three closed diagnostics, a guard decision, and a rebase (round 62)
+
+- Three follow-ups of the reader result were each closed by a rule fixed before the data.
+  - Huge pages for the contraction's build arrays: counting fresh first-touch bytes per phase and
+    calibrating on the reader's measured gain gave an upper bound of part 0.9895, above the 0.985
+    bar.
+  - The reader's faults outside the advised ranges: split by mapping, most are page-cache faults
+    of the input file (about 210 to 230 ns per 4 KiB page with fault-around). What a change could
+    provably remove was 0.61 s, below the 2 s bar.
+  - The TLB share of the part gain, without perf (not allowed on the host): a single-core kernel of
+    the LP memory pattern on two copies of a graph in one process. Its prediction (1.55%) was more
+    than twice the measured part gain (0.56%), so the calibration failed and the idea was closed.
+- The owner decided that a peak-memory guard firing only on a job known to be bimodal does not
+  stop a keep. The parked bundle (one-process refinement skip plus ghost send lists reused on
+  V-cycle restarts; full part 0.982) was kept.
+- It had been measured on the state before the reader change, so it was rebased. Only the build's
+  source list conflicted, as both changes append a source file linked last. The rebase put the
+  earlier file first, so the base keeps its object order as a prefix. It was then checked again
+  without a new timed run, because the reader change touches no code of the bundle: closure compare
+  of the binaries, identity on all sets and builds, the check build, and the memory gate against the
+  new base's peaks.
+- Headline without a direct rerun (owner decision: same processor, relative values suffice): the
+  last direct measurement against the original times the product of the timed ratios of every kept
+  step since then, for part and io separately. This gives part 0.40 of the original as geomean
+  (2.5x) and 0.32 in total (3.1x), and io 0.35 (2.8x) and 0.28 (3.6x).
+- Lessons: a diagnostic that ends in a calibration needs the calibration window fixed in advance,
+  and an effect near the noise floor needs a margin wider than that window. Append new translation
+  units in the order they were kept, so rebases keep earlier layouts. A chained headline must list
+  every factor and the same statistic on both sides.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -801,6 +831,8 @@ time changed the target.
 | 60 | same with an exact-size two-pass build, projected offline (replay exact on 108 processes) | n/a | projected 1.74% (margin 1.2%) | discard offline; idea closed |
 | 61 | diagnostics: coarsening per-node split, received ghost updates, refinement round lag model, reader split | lag model part 0.982 (lag already tried); map probing 0.989 to 0.996 | n/a | no lever except the reader's first touch |
 | 61 | reader: transparent huge pages for the surely written part of the target and edge arrays (TU linked last) | io 0.855 (unseen 0.870) | part 0.994; peak RSS 0.93 to 1.03 per job | keep |
+| 62 | diagnostics: contraction first-touch bytes, reader faults outside the advised ranges, TLB kernel without perf | bound 0.9895; removable 0.61 s; prediction 1.55% vs 0.56% measured | n/a | all closed by their rules |
+| 62 | round-58 bundle kept by owner decision (guard fired only on a bimodal job), rebased onto round 61 | part 0.982 (p1 0.922, refine 0.907) | identity, check build and memory gate passed again | keep |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
