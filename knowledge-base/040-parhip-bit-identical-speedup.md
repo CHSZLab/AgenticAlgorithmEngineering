@@ -658,7 +658,7 @@ time changed the target.
 
 - Coarsening LP sends a moved interface node's new label to every adjacent process. The base
   finds these processes by scanning the node's edges at every move. Two earlier attempts
-  (rounds 50 and 51) built per-node lists of the adjacent processes instead. They saved about 5%
+  (rounds 52 and 53) built per-node lists of the adjacent processes instead. They saved about 5%
   of the coarsening time, but they changed or moved the refinement code and were stopped by its
   noise rule. This time the list path was put in its own translation unit linked last, as a copy
   of the coarsening sweep. Every other function stayed instruction-identical and at the same
