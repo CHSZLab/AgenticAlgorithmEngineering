@@ -683,6 +683,46 @@ time changed the target.
   trustworthy. Give a diagnostic's own assertions a precondition. Here one fired on every push,
   not only on reallocating ones, and cost a rerun (not counted as a failed rule).
 
+### Phase 3: four diagnostics, then huge pages for the reader's first touch (round 61)
+
+- Four diagnostics looked for a lever in the remaining phases, each with a rule fixed before its
+  data that named what would justify an experiment.
+  - Coarsening LP, every node timed on the slowest process: receive integration is a large share,
+    but no output-identical cut of it was known. On three jobs the per-node timers missed the
+    waiting of the final rounds, so their split was not exact.
+  - Received ghost updates per level: none was a no-op and at most 2.5% repeated a node, so a
+    sender-side filter has nothing to cut. One mesh process held 5.4 times the mean ghosts at level
+    0. Extra probe steps in the block-weight map were shown offline not to change the output, but
+    the projection (part 0.989 to 0.996) missed its 0.985 bar.
+  - Refinement rounds: a one-round lag of the block-weight reduction projected part 0.982, but it is
+    the one-round lag already tried (What Didn't Work: the wait moves, it does not vanish), so it
+    was closed.
+    On a social graph the slowest process changes from round to round, while the meshes are
+    balanced per round.
+  - The reader (io) against bandwidth and parse bounds: on one and four processes a large part of
+    io is the first touch of fresh anonymous memory, about 24 bytes per adjacency entry (the
+    target array and the graph's edge array) at 1 to 1.4 us per 4 KiB page. A standalone test gave
+    0.15 ns per byte with `MADV_HUGEPAGE` against 0.33 to 0.42 with small pages, and no gain with
+    16 processes faulting at once.
+- The change asks for transparent huge pages (`madvise(MADV_HUGEPAGE)`) on the 2 MiB-aligned
+  interior of the part of each array that is surely written before it is read. For the target
+  array that is a lower bound computed from the input split's per-chunk counts. The call sits in a
+  new translation unit linked last, and a closure compare of the binaries showed every other
+  function instruction-identical. Nothing new is allocated and no huge page covers bytes that stay
+  untouched, so peak memory did not change (median ratio 0.97 to 1.00 untimed, 0.93 to 1.03 in the
+  timed run). The output is the same: the call is only a hint.
+- Timed: io 0.855 of the base over the full set (0.870 on the unseen graphs), part 0.994, every
+  process count faster. The gain at 16 and 32 processes (io 0.89 to 0.94 on the screen) was not
+  projected: the standalone test with 16 at once had shown none. Part may gain from fewer TLB
+  misses on the edge array, which stays huge-page backed.
+- The effect depends on the host: with THP set to `madvise` (as here) or `always` it applies;
+  with `never` the call does nothing and the program behaves as before.
+- Lessons: time the first touch of large fresh arrays separately from the work that fills them;
+  on Linux, huge pages for arrays that are written in full are an output-identical io lever. Make
+  the advised range a provable lower bound of what is written, so that memory cannot grow. A
+  standalone bound measured with many processes at once can underestimate the gain inside the
+  program.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -759,6 +799,8 @@ time changed the target.
 | 59 | coarsening LP: deterministic receive lag of 2 rounds, sends completed 4 rounds later | coarsen 0.992 (social p16 -0.37 s); ip 1.038, contract 1.014 | part 1.005; unseen 1.041; cut 0.9998; peak RSS up to +15% (unseen +40%) | discard (keep rule; memory guard) |
 | 60 | coarsening sends from per-node adjacent-process lists, in a TU linked last (same messages) | no timing (stopped before the screen) | exact list accounting 2.37% of a process peak (limit 1.5%) | discard (memory gate (a)) |
 | 60 | same with an exact-size two-pass build, projected offline (replay exact on 108 processes) | n/a | projected 1.74% (margin 1.2%) | discard offline; idea closed |
+| 61 | diagnostics: coarsening per-node split, received ghost updates, refinement round lag model, reader split | lag model part 0.982 (lag already tried); map probing 0.989 to 0.996 | n/a | no lever except the reader's first touch |
+| 61 | reader: transparent huge pages for the surely written part of the target and edge arrays (TU linked last) | io 0.855 (unseen 0.870) | part 0.994; peak RSS 0.93 to 1.03 per job | keep |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
