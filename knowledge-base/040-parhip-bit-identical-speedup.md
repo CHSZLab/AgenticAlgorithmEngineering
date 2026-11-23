@@ -790,6 +790,16 @@ time changed the target.
   code is written; check the peak memory in the same run, because reuse and peak pull in opposite
   directions.
 
+### Pull request without the profiling timers, and the pause (round 65)
+
+- At the owner's request, the per-phase profiling timers were taken out of the pull request, so `parhip` prints the same lines
+  as before. This was one extra commit on the PR branch that removes the timer header and all its call sites; the files that
+  only had timer changes are back to their master text.
+- Checks on the new head: all six build variants, ctest, the interface link test and `example_parhip_call` all pass, and a
+  `parhip` run prints no timer line. Outputs are byte-identical to the previous head (det 52/52, quick 72/72), as expected,
+  because the timers only read the clock.
+- The session pauses here; no new experiments are planned.
+
 ## Experiment Data
 
 | Round | Change (phase) | Phase ratio | Full geomean | Verdict |
@@ -872,6 +882,7 @@ time changed the target.
 | 62 | round-58 bundle kept by owner decision (guard fired only on a bimodal job), rebased onto round 61 | part 0.982 (p1 0.922, refine 0.907) | identity, check build and memory gate passed again | keep |
 | 63 | PR preparation: rebase onto upstream, full build matrix; missing source file in two tool targets fixed | n/a | partitioner binaries byte-identical after the fix; outputs identical after the rebase | build rule added |
 | 64 | keep freed memory in the malloc heap (glibc tunables, no code) | faults avoided: coarsen 0.82 to 1.00, contract 0.61 to 0.96; projected part 0.978 | peak memory up to +19.5% per process (29 above 1.5%) | closed (memory rule); output-identical line exhausted |
+| 65 | remove the profiling timers from the pull request | outputs byte-identical to the previous head (det 52/52, quick 72/72); all build and interface checks pass | none | done; session paused |
 
 From round 17 on the full-geomean column is the part time. Cross-run A/A of the same binary: part
 0.9% geomean / 0.2% total, IO 0.5% / 0.4%; within one alternating run, IO moved by up to 1.6%
