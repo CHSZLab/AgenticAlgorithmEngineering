@@ -8,8 +8,8 @@ authors:
     affiliation: Heidelberg University
 repository-code: "https://github.com/CHSZLab/AgenticAlgorithmEngineering"
 license: MIT
-version: "1.11"
-date-released: "2026-11-10"
+version: "1.12.1"
+date-released: "2026-11-25"
 keywords:
   - algorithm engineering
   - AI agents
