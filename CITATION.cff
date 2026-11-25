@@ -8,6 +8,11 @@ authors:
     affiliation: Heidelberg University
 repository-code: "https://github.com/CHSZLab/AgenticAlgorithmEngineering"
 license: MIT
+doi: "10.5281/zenodo.24537749"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24537749"
+    description: "Zenodo concept DOI (all versions)"
 version: "1.12.1"
 date-released: "2026-11-25"
 keywords:
