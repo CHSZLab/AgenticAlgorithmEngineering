@@ -2,7 +2,9 @@
   <img src="https://raw.githubusercontent.com/CHSZLab/AgenticAlgorithmEngineering/main/img/banner.svg" alt="Agentic Algorithm Engineering" width="900"/>
 </p>
 
-# Agentic Algorithm Engineering 
+# Agentic Algorithm Engineering
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24537749.svg)](https://doi.org/10.5281/zenodo.24537749)
 
 This repository contains the program definition for **Agentic Algorithm Engineering (AAE)**, a methodology that turns autonomous agents into performance engineers following the Algorithm Engineering cycle: design, analysis, implementation, and experimental evaluation, driven by falsifiable hypotheses.
 
@@ -247,6 +249,8 @@ If you use Agentic Algorithm Engineering in your research, please cite the follo
   url           = {https://arxiv.org/abs/2609.07204}
 }
 ```
+
+To cite the software itself, use its Zenodo DOI [10.5281/zenodo.24537749](https://doi.org/10.5281/zenodo.24537749), which always resolves to the latest release; each release also has its own DOI on Zenodo.
 
 ## Author
 
