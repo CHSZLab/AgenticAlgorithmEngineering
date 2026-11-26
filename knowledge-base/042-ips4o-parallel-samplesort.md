@@ -25,8 +25,54 @@ strict keep rule (gain outside the A/A noise band, gate pass, difftest + TSan + 
    on every family, 2.7x the predicted gain: the classification loop is issue-bound, so uop counts per key
    translate almost directly into time.
 
-Training metric 1.000 -> 0.758 (-24.2%) after 10 experiments, gate passed at every kept step, struct key path
-unchanged, extra memory 0.11% of the input throughout.
+5. **Run-aware classification**: probe 64 adjacent pairs per classification call; if at most 1/8 change
+   bucket, classify by following the current bucket (two splitter comparisons per key instead of a full
+   descent). -4.9% overall, -9..-10% on nearly sorted, reversed and organ-pipe inputs, neutral on random ones.
+6. **Base-case merge from both ends**: the front takes the smaller head, the back the larger tail (ties
+   consistent), halving the dependent chain of the branchless merge: -3.2%.
+7. **Check for 4K aliasing when splitting a struct-of-pairs into parallel arrays.** Separate `ptr[]`/`end[]`
+   bucket arrays exactly 4096 B apart lost on presorted inputs; padding halved the loss. After run-aware
+   classification took over the presorted inputs, the padded layout was re-proposed (reason logged first)
+   and gave -5.3%.
+8. **128 keys in 32 ymm registers** (one sort network for 4 x 32 lanes plus the lane merges) instead of two
+   64-key register sorts and a merge: -1.3%. Needs `__attribute__((flatten))`: without inlining of the
+   network, GCC keeps the register file in memory.
+9. **Re-tune the level thresholds after making the base case cheaper.** The upstream single-level limit
+   (base-case size x 2^8) was derived for a slow base case; a histogram of (parent size, child size) of the
+   sequential recursion showed ~40% of the last-level subproblems just above the limit, split by two 4-bit
+   levels or a 5-bit level plus a second partition of every child. Doubling the limit for the vectorized
+   key types: -2.1%.
+10. **Copy runs instead of classifying them.** In the run-aware classification, a run of keys of one bucket
+   is copied in an inner loop specialized for interior, first and last bucket, bounded by the input and
+   buffer ends: -7.3%. Presorted families also need a presorted base case (sorted: done, reversed: reverse,
+   few descents: insertion) for the buckets of such partitions: -1.3%.
+11. **Equality buckets of integer keys need no data movement.** For 8-byte integers under `std::less`
+    (equal keys are identical), a full buffer of an equality bucket is reset and counted, and the cleanup
+    fills the bucket with the splitter value. The fill must be parallel (split by rank over all threads)
+    and use non-temporal stores for long ranges, or the cold lines are read before being written: -1.4%,
+    few_unique -7..-12%.
+12. **A vector quicksort beats one partitioning level only on warm data.** Random subproblems of <= 64K
+    keys sorted by a 256-bit AVX-512VL quicksort (compare mask -> 16-entry LUT permute, full stores at both
+    write ends). The subproblem is cold when its sort starts: probe short contiguous chunks, split once by
+    a median of 9, then sample in the warm halves; strided probes and a large cold sample ate the gain.
+13. **Look at what a subproblem holds before designing a rule for it.** Dumping real buckets of the
+    presorted families and simulating candidate rules in a few lines of Python found the three largest wins
+    of the session:
+    - inputs monotone up to local disorder: probe, reverse if descending, bounded parallel insertion sort per
+      stripe, stripe boundaries repaired under the same bound, full sort on any exceeded budget: -16.4%
+      (reversed 0.29x); then the reversal fused with the insertion pass while cache resident: -6.3%;
+    - nearly sorted subproblems after a partitioning level (owner blocks in order, random blocks of keys
+      displaced from other stripes, sorted pieces at the margins): one pass over 256-key windows keeps sorted
+      windows in bulk, extracts random ones and decides per key in between; the displaced keys (2.6..4.3%)
+      go to a buffer of <= 0.75% of the input, are sorted and merged back from the back: -4.6%.
+14. **Check code alignment before trusting a small effect.** Unrelated edits moved untouched families by
+    1..5% (a hot loop ending on a 32-byte boundary, JCC erratum on Cascade Lake). 64-byte alignment of the
+    hot functions stopped the shifts; pinning insertion sort to 16 mod 64 fixed a kv regression. Micro gains
+    of 20..40% in tight scalar loops vanished with `-Wa,-mbranches-within-32B-boundaries`.
+
+Training metric 1.000 -> 0.403 (-59.7%, 2.48x) after 38 experiments, gate passed at every kept step, struct
+key path within the band of the baseline, extra memory 0.11% of the input (0.60% while the outlier buffers of
+item 13 are in use).
 
 ## What Didn't Work
 
@@ -39,6 +85,32 @@ unchanged, extra memory 0.11% of the input throughout.
   bucket. The arrays were exactly 4096 B apart (4K aliasing); padding halved the loss but did not remove it.
 - Pilots with a standalone binary (different iterator type and standard level) mispredicted the harness on
   presorted families twice. Pilot with the exact harness build.
+- Classifier compare-exchange variants: an arithmetic (branch-free, sub + shift) descent was +6% slower than
+  `cmp; adc`; unrolling 8 instead of 7 keys gained 2..3% on random families and lost 1..3% on presorted ones
+  (net +0.3%); staggering the bucket buffers to avoid set conflicts and a vectorized first tree level were
+  neutral.
+- Higher oversampling (50%, 100% instead of 20%) for narrower last-level buckets: the cleanup got 3% faster,
+  the wall time 1..4% slower (more sample sorting).
+- Sorting the sample with the base case instead of a recursive partition: 20% fewer partition calls, but only
+  -0.4%.
+- Profiling with per-phase timers (`IPS4O_TIMER`) distorted the profile (a fake 12% gap and lock contention);
+  per-level atomic counters in a plain build were reliable.
+- Non-temporal or inline vector block flushes in the classification: +8..+25% (the permutation re-reads the
+  flushed blocks from cache; libc `rep movsb` already avoids the read for ownership).
+- More L0 buckets (1024..4096) to save a pass: the 32 KB tree misses L1d and 1 MB of buffers miss L2 (+5.5%
+  at 1024).
+- A merge of the few monotone runs in subproblems of organ-pipe inputs: -9..-12% on that family, but one
+  family in seven moves the geometric mean by under 1%: inside the noise band. A 256-bit bitonic merge was
+  no faster than a 4-chain scalar branchless merge (port 5 saturated).
+- Counting few distinct keys with hash tables: fast, but not comparison based (rejected by the rules).
+- For the struct key path, a rank sort or a smaller last-level bucket instead of insertion sort: <= 1% or
+  slower.
+
+**Changing a threshold can move an off-by-one into reachable range.** The two-level bucket count
+`(log2(n / base) + 1) / 2` exceeds the maximum of 8 at exactly n = 2-level threshold once the single-level
+threshold is above base x 2^8; with the doubled threshold this is n = 2^23 exactly, and buildClassifier writes
+past the splitter array. The difftest (random sizes and a fixed size list) did not hit it; a larger threshold
+in a prototype crashed on Zipf. Add the exact thresholds to the difftest whenever they change.
 
 ## Experiment Data
 
@@ -49,9 +121,25 @@ unchanged, extra memory 0.11% of the input throughout.
 | H3 | vector base case up to 256 (64-key registers + branchless merge) | 0.917 | 0.844 |
 | H5 | base-case size 64 for vectorized key types | 0.982 | 0.825 |
 | H7 | classifier descent as cmp + adc | 0.920 | 0.758 |
-| H4, H6, H9, H10 | discarded (inside the noise band) | 0.992..0.998 | |
+| H11 | run-aware classification | 0.951 | 0.721 |
+| H12 | base-case merge from both ends | 0.968 | 0.700 |
+| H13 | padded separate buffer pointer arrays | 0.947 | 0.661 |
+| H26 | 128-key register sort | 0.987 | 0.653 |
+| H28 | single-level limit x2 for the vector base case | 0.980 | 0.640 |
+| H30 | skip the base case of equality buckets | 0.986 | 0.628 |
+| H33 | out-of-place stratified sample at the last level | 0.989 | 0.620 |
+| H35 | run copy in the run-aware classification | 0.927 | 0.574 |
+| H34r | presorted base case | 0.987 | 0.564 |
+| H39r | equality buckets rebuilt from the splitter (+ hot-function alignment) | 0.986 | 0.554 |
+| H41r | per-chunk run dispatch in the classification | 0.985 | 0.543 |
+| H42 | vector quicksort for random subproblems (kept for a struct-path gain) | 0.999 | 0.542 |
+| H44r | inputs monotone up to local disorder | 0.836 | 0.451 |
+| H45 | reversal fused with the insertion pass | 0.937 | 0.422 |
+| H48 | displaced keys of nearly sorted subproblems extracted and merged back | 0.954 | 0.403 |
+| H4, H6, H9, H10, H20, H23, H27, H49 and others | discarded (inside the noise band) | 0.986..1.003 | |
 
-Noise band: 0.61% in part 1, 2.06% in part 2 (dominated by the struct-path check).
+Noise band: 0.61% in part 1, 2.06% in part 2 (dominated by the struct-path check), 0.82% in part 3, 3.47%
+in part 5 (one gate outlier).
 
 ## Code Example
 
