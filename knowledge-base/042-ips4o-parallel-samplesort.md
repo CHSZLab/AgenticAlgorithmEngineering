@@ -70,8 +70,25 @@ strict keep rule (gain outside the A/A noise band, gate pass, difftest + TSan + 
     hot functions stopped the shifts; pinning insertion sort to 16 mod 64 fixed a kv regression. Micro gains
     of 20..40% in tight scalar loops vanished with `-Wa,-mbranches-within-32B-boundaries`.
 
-Training metric 1.000 -> 0.403 (-59.7%, 2.48x) after 38 experiments, gate passed at every kept step, struct
-key path within the band of the baseline, extra memory 0.11% of the input (0.60% while the outlier buffers of
+15. **Make the presorted cases read-only first.** The outlier case of item 13 compacted the kept keys (one R+W
+    pass) and then merged (another). Recording the kept keys as runs of positions in a read-only pass lets the
+    merge move each key once: the shift D (outliers before minus holes before) only grows inside a run, so
+    runs split into segments merged forward (D <= 0) or backward (D > 0), cut where neither side reads or
+    writes across: -2.5%, nearly sorted -15%.
+16. **Ask how far each family is from one pass over memory.** Organ pipe took 1.08 s, about 6 passes. A few
+    (<= 4) long monotone runs at the top level are now merged pairwise in place in parallel: threads co-rank
+    output blocks, merge each into an input block they have already consumed (or one of 12 buffer blocks),
+    and a parallel block permutation (paths and cycles cut into equal parts, copies at the cuts) puts the
+    blocks in place; descending runs are read backwards: -9.4%, organ pipe -57%.
+17. **Check the output instead of the input.** The run detection read (0.09 s) went: runs come from 65536
+    probes (a subsequence has at most as many runs as the input, so declining is always safe), and the merge
+    checks that each output block is sorted and after the previous one. On failure the threads stop at a
+    block boundary and refill their consumed positions from the buffer slots, leaving a permutation for the
+    generic sort. Together with merge blocks as large as the memory budget allows (128 KB instead of 16 KB):
+    -1.7%, organ pipe -21%.
+
+Training metric 1.000 -> 0.338 (-66.2%, 2.96x) after 48 experiments, gate passed at every kept step, struct
+key path within the band of the baseline, extra memory 0.11% of the input (0.70% while the outlier buffers of
 item 13 are in use).
 
 ## What Didn't Work
@@ -103,6 +120,11 @@ item 13 are in use).
   family in seven moves the geometric mean by under 1%: inside the noise band. A 256-bit bitonic merge was
   no faster than a 4-chain scalar branchless merge (port 5 saturated).
 - Counting few distinct keys with hash tables: fast, but not comparison based (rejected by the rules).
+- A probe-based run detection alone (organ pipe -12%) did not survive the paired run: the untouched families
+  drifted +1..2%, and one family in seven needs ~15% to clear a 1.5% band. Stacking it with the larger merge
+  blocks did.
+- Splitter thinning under equality buckets (zipf -4%) and an asm equality step: inside the band; a stand-alone
+  profiler mispredicted classifier changes of 2..5% on the harness library twice.
 - For the struct key path, a rank sort or a smaller last-level bucket instead of insertion sort: <= 1% or
   slower.
 
@@ -136,10 +158,14 @@ in a prototype crashed on Zipf. Add the exact thresholds to the difftest wheneve
 | H44r | inputs monotone up to local disorder | 0.836 | 0.451 |
 | H45 | reversal fused with the insertion pass | 0.937 | 0.422 |
 | H48 | displaced keys of nearly sorted subproblems extracted and merged back | 0.954 | 0.403 |
-| H4, H6, H9, H10, H20, H23, H27, H49 and others | discarded (inside the noise band) | 0.986..1.003 | |
+| C1 | vector top levels of the classifier + run merge in organ-pipe subproblems | 0.977 | 0.394 |
+| H58 | outlier case with a read-only first pass and one segmented merge | 0.975 | 0.383 |
+| H59b | top-level in-place parallel merge of <= 4 long runs | 0.906 | 0.348 |
+| H62 | runs from probes, checked merge, merge blocks from the memory budget | 0.983 | 0.338 |
+| H4, H6, H9, H10, H20, H23, H27, H49, H52, H61 and others | discarded (inside the noise band) | 0.986..1.004 | |
 
 Noise band: 0.61% in part 1, 2.06% in part 2 (dominated by the struct-path check), 0.82% in part 3, 3.47%
-in part 5 (one gate outlier).
+in part 5 (one gate outlier), 2.09% in part 6, 1.54% in part 7.
 
 ## Code Example
 
