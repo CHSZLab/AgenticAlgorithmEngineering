@@ -87,9 +87,37 @@ strict keep rule (gain outside the A/A noise band, gate pass, difftest + TSan + 
     generic sort. Together with merge blocks as large as the memory budget allows (128 KB instead of 16 KB):
     -1.7%, organ pipe -21%.
 
-Training metric 1.000 -> 0.338 (-66.2%, 2.96x) after 48 experiments, gate passed at every kept step, struct
-key path within the band of the baseline, extra memory 0.11% of the input (0.70% while the outlier buffers of
-item 13 are in use).
+18. **Software prefetch where all threads stream.** With 16 threads reading DRAM, the hardware prefetcher
+    leaves the classifier's input loads waiting: one `prefetcht0` 2 KB ahead per batch of 8 keys gave -1.6%
+    (zipf -5%), and the same in the vector quicksort partition and the outlier passes another -1.6%
+    (nearly_sorted -8%). Measure prefetch at the full thread count.
+19. **Pin the worker threads.** Pinning worker i to the i-th CPU of the caller's affinity set (the caller
+    itself stays unpinned, as OpenMP proc_bind) gave -3.5%, most on the short run families (reversed -8%,
+    0.18 s): threads migrating between phases moved their stripes away from their caches.
+20. **A call on a rare path can cost the hot loop its registers.** A buffer flush calling `memmove` once per
+    256 keys made GCC keep the vector classifier's splitter vectors and loop state on the stack (1062 stack
+    references, reloaded every batch): a call clobbers all vector and caller-saved registers. Inline
+    `rep movsb` for the 2 KB flush cut them to 335, -2.4% with a bundle. Count stack references in the hot
+    loop's assembly after any change that adds a call. The same inline copy in the block permutation (both
+    sides out of cache, equal offsets mod 4 KB) was 11.7% slower than glibc's loop: not a general memmove.
+21. **Issue-bound loops pay for every instruction.** The classifier (~2.4 uops/cycle) and the vector
+    quicksort partition (~3.5) have no saturated port; a review of the generated code removed 5 of 15
+    instructions per vector in the partition (`int` counters widened in the loop-carried pointer update),
+    loop-control bookkeeping and register copies around `vpermt2q` (using the `vpermi2q` form via inline asm)
+    and `vperm2i128` (no EVEX form, so ymm16-31 were copied; `vshufi64x2` is equivalent): -1.8% together.
+    Adding uops to shorten dependency chains (two descent levels per step) was 6% slower.
+22. **Gate a replacement by the property that makes the old code cheap.** Generic records in last-level
+    buckets of 65..256 fell back to insertion sort (about a quarter of the records: the last level samples
+    two keys per bucket). Networks plus merges won on random buckets and lost 3.5% (zipf) and 7.8%
+    (nearly_sorted), where insertion sort is O(n + inversions). A histogram of descents per bucket separated
+    the two cleanly (random ~n/2, presorted ~0); gating at n/4 descents kept both wins (kv -4.1% together with
+    a cheaper network loop). Put the rare large-bucket path out of line: inlined, it pushed the hot
+    small-bucket network out of the cleanup loop and cost 4.5%.
+
+Training metric 1.000 -> 0.301 (-69.9%, 3.33x) after 58 experiments, gate passed at every kept step. The
+struct key path (16-byte records) was never slower than the band and got 11% faster through three steps kept
+under the struct-path rule. Extra memory 0.11% of the input (0.70% while the outlier buffers of item 13 are
+in use).
 
 ## What Didn't Work
 
@@ -127,6 +155,11 @@ item 13 are in use).
   profiler mispredicted classifier changes of 2..5% on the harness library twice.
 - For the struct key path, a rank sort or a smaller last-level bucket instead of insertion sort: <= 1% or
   slower.
+- Two scalar descent levels per step (rank among three splitters, shorter chain, +5 uops per key): +6%; the
+  descent is throughput bound, not latency bound.
+- 512 buckets with 1 KB blocks, or a 6-bit sequential fan-out instead of 7: +9% and +2.4%.
+- Generic struct base case: pair insertion sort (two records per pass) 1.06..1.14x slower; smaller last-level
+  buckets for generic types cost what the shorter insertion sorts saved.
 
 **Changing a threshold can move an off-by-one into reachable range.** The two-level bucket count
 `(log2(n / base) + 1) / 2` exceeds the maximum of 8 at exactly n = 2-level threshold once the single-level
@@ -162,10 +195,18 @@ in a prototype crashed on Zipf. Add the exact thresholds to the difftest wheneve
 | H58 | outlier case with a read-only first pass and one segmented merge | 0.975 | 0.383 |
 | H59b | top-level in-place parallel merge of <= 4 long runs | 0.906 | 0.348 |
 | H62 | runs from probes, checked merge, merge blocks from the memory budget | 0.983 | 0.338 |
+| H64 | software prefetch in the vector classifier descent | 0.984 | 0.331 |
+| H65 | prefetch in the vector quicksort and outlier passes | 0.984 | 0.327 |
+| H66 | pinned thread pool workers | 0.965 | 0.316 |
+| H75 | generic descent with byte offsets + prefetch (struct path -3.9%) | 0.999 | 0.315 |
+| H77 | merge-exchange network for generic records (struct path -3.4%) | 0.997 | 0.314 |
+| C4 | inline 2 KB flush (registers kept) + shared equality-bucket buffers | 0.976 | 0.306 |
+| C8 | instruction cuts in vq/classifier/base case, 7-bit sequential fan-out, gated struct merges (struct -4.1%) | 0.986 | 0.301 |
 | H4, H6, H9, H10, H20, H23, H27, H49, H52, H61 and others | discarded (inside the noise band) | 0.986..1.004 | |
 
 Noise band: 0.61% in part 1, 2.06% in part 2 (dominated by the struct-path check), 0.82% in part 3, 3.47%
-in part 5 (one gate outlier), 2.09% in part 6, 1.54% in part 7.
+in part 5 (one gate outlier), 2.09% in part 6, 1.54% in part 7, 1.34% in part 8, 2.24% in part 9.
+Struct-path (16-byte records) changes inside the band were kept when they made that path >= 3% faster.
 
 ## Code Example
 
