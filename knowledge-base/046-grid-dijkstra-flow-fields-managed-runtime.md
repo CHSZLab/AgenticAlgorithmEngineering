@@ -19,7 +19,7 @@ and a binary heap of `(int, Vector2Int)`.
 
 ## What Worked
 
-Baseline 40.02 ms to 2.86 ms (-92.9%) in 10 experiments. In order of size:
+Baseline 40.02 ms to 2.45 ms (-93.9%, 16.4x) in 15 experiments. In order of size:
 
 1. **Flat-index kernel (-79%).** Replace `Vector2Int` neighbors, interface calls and the
    direction table with fixed offsets (`i ± 1`, `i ± w`, `i ± w ± 1`) over a flat `bool[]`.
@@ -45,8 +45,20 @@ Baseline 40.02 ms to 2.86 ms (-92.9%) in 10 experiments. In order of size:
    used `&&` chains and made random-obstacle grids *slower* (branch mispredictions on
    obstacle data). Block-copying the `bool[]` into `byte[]` (0/1) and combining bits with
    `&`, `|` and `<<` for interior cells fixed that.
-6. **Fill output arrays with doubling `Array.Copy` (-5%).** `log2(n)` block copies instead
+6. **Prune relaxations the parent already covered (-5.6%, then -3.6%).** If a popped
+   cell's back-pointer is direction b, then directions b-1, b and b+1 lead to the parent
+   or to cells the parent (finalized earlier) already relaxed at a strictly lower cost.
+   After a diagonal arrival, with ortho <= diag, b-2 and b+2 go too: the no-corner-cut
+   rule means both shared-edge cells are passable, and each reaches that far corner at
+   parent + 2*ortho. One 256-entry table lookup per pop (`mask & keep[best]`) replaces up
+   to 5 failing checks. The output is exactly unchanged, ties included.
+7. **Fill output arrays with doubling `Array.Copy` (-5%).** `log2(n)` block copies instead
    of an n-step loop to set Unreachable and 0xFF.
+8. **Build the neighbor mask 8 cells per `ulong` (-3.3%).** Block-copy the 8 shifted
+   neighbor views of each row into `ulong[]` and run the same AND/OR/shift formula on 8
+   cells at once. Bytes stay 0/1 and shifts are at most 7, so no bit crosses into the next
+   cell's byte. The build fell about 40%, not the 8x the operation count suggested,
+   because the per-row copies cost too.
 
 Method notes that saved time:
 - **Time each part separately in the harness, not in the code under test.** Timing
@@ -72,17 +84,30 @@ Method notes that saved time:
 | 008 | branch-free mask build | 3.23 | -3.8% |
 | 009 | dead-code removal (simplification) | 3.25 | neutral |
 | 010 | drain each bucket in one pass | 2.86 | -12.0% |
+| 011 | ref locals for target buckets | 3.18 | +11.2% (discarded) |
+| 012 | snapshot copy: hoist interface bounds | 2.78 | -2.9% |
+| 013 | prune b-1..b+1 toward the parent | 2.62 | -5.6% |
+| 014 | also prune b+-2 after diagonal arrival | 2.53 | -3.6% |
+| 015 | word-parallel mask build | 2.45 | -3.3% |
 
 Run-to-run noise was about ±2.5%. Results under 5% were rerun, and kept only when two
 readings agreed within 0.5%.
 
 ## What Didn't Work
 
+- **Ref locals (+11%, discarded).** Holding `ref int[]` / `ref int` to the two target
+  buckets for a drain, so each push becomes a dereference, made things slower. Under
+  this runtime a managed-pointer dereference costs more than a bounds-checked element
+  access on a local array. Hoisting into plain locals pays; hoisting into refs doesn't.
 - The first mask build, with `&&` chains on obstacle data: random-obstacle grids
   regressed 2-7% until the build was made branch-free (see 5 above).
 - My predictions undershot the call and invariant-hoisting wins every time (002, 004,
   010). On an unoptimizing JIT, assume overhead is bigger than a native intuition
   suggests.
+
+- A contaminated run: once, the unchanged-code control read 2.7x its usual value under
+  host load, and the run was discarded. Rule adopted afterwards: rerun whenever the
+  control moves by more than 20%.
 
 Rejected without running:
 - A fast path for grid copies when the source is already a snapshot. It only helps
@@ -112,5 +137,6 @@ while (count > 0):
 
 C# in the Unity 6 editor (Mono JIT, batch mode, very likely Debug code optimization),
 Apple M1 Max. The shipped build is IL2CPP to WebAssembly, where an optimizing compiler
-should shrink the call and invariant-hoisting wins (3, 4, 6 above). The algorithmic wins
-(1 partly, 2, 5) should carry over.
+should shrink the call and invariant-hoisting wins (3, 4, 7, 8 above). The algorithmic wins
+(1 partly, 2, 5, 6) should carry over. These numbers come from the editor, not from a
+WebAssembly build.
